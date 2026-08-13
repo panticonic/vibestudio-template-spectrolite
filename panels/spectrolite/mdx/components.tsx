@@ -8,7 +8,7 @@
  *     so the component itself stays purely declarative.
  */
 
-import React, { createContext, useContext, type ReactNode } from "react";
+import { createContext, useContext, type ReactNode } from "react";
 import { Link } from "@radix-ui/themes";
 import { mdxComponents as chatMdxComponents } from "@workspace/agentic-chat";
 

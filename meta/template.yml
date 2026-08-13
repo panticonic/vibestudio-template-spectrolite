@@ -1,4 +1,11 @@
-systemEpoch: 57
+systemEpoch: 58
+template:
+  name: Spectrolite
+  description: An MDX writing and editing workspace with collaborative agent tooling.
+  repositories:
+    - packages/mdx-editor-core
+    - panels/spectrolite
+  files: []
 templates:
   use:
     - url: git+https://github.com/panticonic/vibestudio-workspace-base.git

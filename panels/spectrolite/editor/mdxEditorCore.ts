@@ -34,7 +34,11 @@ import {
 } from "@workspace/mdx-editor-core";
 import { fromMarkdown } from "mdast-util-from-markdown";
 
-import { buildMdxConfig, type BuiltMdxConfig, type MdxConfigOptions } from "./mdxConfig.js";
+import {
+  buildMdxConfig,
+  type BuiltMdxConfig,
+  type MdxConfigOptions,
+} from "./mdxConfig.js";
 import { splitMdxBlocks } from "./parseBlocks.js";
 import { reconcileBlocks, type Block } from "../coedit/blockReconcile.js";
 import { wikilinksFromJsx, wikilinksToJsx } from "../mdx/wikilink.js";
@@ -66,16 +70,18 @@ function multiset(values: string[]): { take(value: string): boolean } {
 }
 
 function isEmptyTopLevel(node: LexicalNode): boolean {
-  return node.getType() === "paragraph" && (node as ElementNode).getChildrenSize() === 0;
+  return (
+    node.getType() === "paragraph" &&
+    (node as ElementNode).getChildrenSize() === 0
+  );
 }
 
 export class MdxEditorCore implements CoEditEditor {
-  private baseCanonical = "";
   private baseBlocks: Block[] = [];
 
   constructor(
     readonly editor: LexicalEditor,
-    private readonly config: BuiltMdxConfig
+    private readonly config: BuiltMdxConfig,
   ) {}
 
   private descriptors() {
@@ -103,7 +109,7 @@ export class MdxEditorCore implements CoEditEditor {
         // Spectrolite components are runtime globals. Preserve authored ESM
         // exactly instead of synthesizing a second import channel.
         addImportStatements: false,
-      })
+      }),
     );
     return wikilinksFromJsx(jsx);
   }
@@ -123,13 +129,12 @@ export class MdxEditorCore implements CoEditEditor {
           ...this.descriptors(),
         });
       },
-      { discrete: true, tag: HISTORIC_TAG }
+      { discrete: true, tag: HISTORIC_TAG },
     );
     this.rebase(this.getCanonical());
   }
 
   rebase(canonical: string): void {
-    this.baseCanonical = canonical;
     this.baseBlocks = splitMdxBlocks(canonical, "base");
   }
 
@@ -159,7 +164,7 @@ export class MdxEditorCore implements CoEditEditor {
       $getRoot()
         .getChildren()
         .filter((node) => !isEmptyTopLevel(node))
-        .map((node) => node.getKey())
+        .map((node) => node.getKey()),
     );
   }
 
@@ -202,7 +207,12 @@ export class MdxEditorCore implements CoEditEditor {
     for (const op of recon.ops) {
       if (op.kind === "contained") {
         const base = this.baseBlocks[op.oldIndex];
-        if (base) dirty.push({ baseStart: base.start, baseEnd: base.end, newText: op.newText });
+        if (base)
+          dirty.push({
+            baseStart: base.start,
+            baseEnd: base.end,
+            newText: op.newText,
+          });
       }
       // Structural local edits omit surgical hunks → whole-doc fallback commit.
     }
@@ -216,13 +226,15 @@ export class MdxEditorCore implements CoEditEditor {
   applyContained(op: ContainedApply): void {
     this.editor.update(
       () => {
-        const target = op.oldId ? $getNodeByKey(op.oldId) : this.nodeAtContentIndex(op.oldIndex);
+        const target = op.oldId
+          ? $getNodeByKey(op.oldId)
+          : this.nodeAtContentIndex(op.oldIndex);
         if (!target) return;
         const fresh = this.importFragment(op.newText);
         for (const node of fresh) target.insertBefore(node);
         target.remove();
       },
-      { discrete: true, tag: HISTORIC_TAG }
+      { discrete: true, tag: HISTORIC_TAG },
     );
   }
 
@@ -233,14 +245,16 @@ export class MdxEditorCore implements CoEditEditor {
           .map((id) => $getNodeByKey(id))
           .filter((node): node is LexicalNode => node != null);
         const anchor = op.beforeId ? $getNodeByKey(op.beforeId) : null;
-        const fresh = op.newTexts.length ? this.importFragment(op.newTexts.join("\n\n")) : [];
+        const fresh = op.newTexts.length
+          ? this.importFragment(op.newTexts.join("\n\n"))
+          : [];
         for (const node of fresh) {
           if (anchor && anchor.isAttached()) anchor.insertBefore(node);
           else $getRoot().append(node);
         }
         for (const target of targets) target.remove();
       },
-      { discrete: true, tag: HISTORIC_TAG }
+      { discrete: true, tag: HISTORIC_TAG },
     );
   }
 
@@ -276,18 +290,22 @@ export class MdxEditorCore implements CoEditEditor {
   // -------------------------------------------------------------------------
 
   onUserEdit(cb: () => void): () => void {
-    return this.editor.registerUpdateListener(({ tags, dirtyElements, dirtyLeaves }) => {
-      // Programmatic applies (load / remote reconcile / revert) are HISTORIC —
-      // never a user edit, so they must not schedule a commit.
-      if (tags.has(HISTORIC_TAG)) return;
-      if (dirtyElements.size === 0 && dirtyLeaves.size === 0) return;
-      cb();
-    });
+    return this.editor.registerUpdateListener(
+      ({ tags, dirtyElements, dirtyLeaves }) => {
+        // Programmatic applies (load / remote reconcile / revert) are HISTORIC —
+        // never a user edit, so they must not schedule a commit.
+        if (tags.has(HISTORIC_TAG)) return;
+        if (dirtyElements.size === 0 && dirtyLeaves.size === 0) return;
+        cb();
+      },
+    );
   }
 }
 
 /** Create a headless editor core (tests, and the import/export engine). */
-export function createMdxEditorCore(opts: MdxConfigOptions = {}): MdxEditorCore {
+export function createMdxEditorCore(
+  opts: MdxConfigOptions = {},
+): MdxEditorCore {
   const config = buildMdxConfig(opts);
   const editor = createEditor({
     namespace: "spectrolite",

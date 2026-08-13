@@ -35,11 +35,21 @@ export interface ScribeRequest {
  * an optional quoted selection for grounding, and the committed event so
  * the scribe edits against exactly what the user saw.
  */
-export function buildScribeMessage(input: ScribeRequest, eventId: string | null): string {
+export function buildScribeMessage(
+  input: ScribeRequest,
+  eventId: string | null,
+): string {
   const handle = input.handle ?? "scribe";
   const lines = [`@${handle} ${input.message.trim()}`];
   if (input.context?.selection) {
-    lines.push("", `> Re: \`${input.context.path}\``, "", "```", input.context.selection, "```");
+    lines.push(
+      "",
+      `> Re: \`${input.context.path}\``,
+      "",
+      "```",
+      input.context.selection,
+      "```",
+    );
   } else if (input.context?.path) {
     lines.push("", `(Re: \`${input.context.path}\`)`);
   }
@@ -53,11 +63,12 @@ export function buildScribeMessage(input: ScribeRequest, eventId: string | null)
  */
 export async function sendToScribe(
   deps: ScribeDispatchDeps,
-  request: ScribeRequest
+  request: ScribeRequest,
 ): Promise<{ eventId: string | null }> {
   const committed = await deps.commitPending();
   const eventId = committed?.eventId || null;
-  const handle = request.handle ?? "scribe";
-  await deps.send(buildScribeMessage(request, eventId), { mentions: [request.participantId] });
+  await deps.send(buildScribeMessage(request, eventId), {
+    mentions: [request.participantId],
+  });
   return { eventId };
 }

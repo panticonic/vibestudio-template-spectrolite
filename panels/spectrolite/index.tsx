@@ -15,10 +15,13 @@
 
 import { useEffect, useMemo } from "react";
 import { Flex, Spinner, Text, Theme } from "@radix-ui/themes";
-import { usePanelTheme, useAgentState } from "@workspace/react";
+import {
+  useAgentState,
+  usePanelTheme,
+  usePanelThemeConfig,
+} from "@workspace/react";
 import { ErrorBoundary } from "@workspace/agentic-chat";
-import { useAppTheme } from "@workspace/ui/panel";
-import "@workspace/ui/tokens.css";
+import "@workspace/ui/foundation.css";
 import { createSpectroliteApp } from "./app/createApp";
 import { AppProvider, useAppState } from "./app/context";
 import { Shell } from "./components/Shell";
@@ -27,7 +30,7 @@ import "./style.css";
 
 export default function SpectrolitePanel() {
   const theme = usePanelTheme();
-  const appTheme = useAppTheme();
+  const appTheme = usePanelThemeConfig();
   const app = useMemo(() => createSpectroliteApp(), []);
 
   useEffect(() => {
@@ -61,7 +64,7 @@ function SessionGate({ theme }: { theme: "light" | "dark" }) {
       conflicts: pendingSuggestions,
       repoRoot,
     }),
-    [activePath, dirtyPaths, pendingSuggestions, repoRoot]
+    [activePath, dirtyPaths, pendingSuggestions, repoRoot],
   );
   useAgentState("spectrolite", agentState);
 

@@ -13,7 +13,15 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { Box, Button, Callout, Flex, Heading, IconButton, Text } from "@radix-ui/themes";
+import {
+  Box,
+  Button,
+  Callout,
+  Flex,
+  Heading,
+  IconButton,
+  Text,
+} from "@radix-ui/themes";
 import {
   DotsHorizontalIcon,
   Cross2Icon,
@@ -23,7 +31,7 @@ import {
   ListBulletIcon,
   MagnifyingGlassIcon,
 } from "@radix-ui/react-icons";
-import { useIsMobile, usePaletteCommands } from "@workspace/react";
+import { useHostCommands, useIsMobile } from "@workspace/react";
 import { useApp, useAppState } from "../app/context";
 import { WikilinkContext } from "../mdx/components";
 import { resolveWikilinkTarget } from "../mdx/wikilink";
@@ -66,10 +74,14 @@ export function Shell({ theme }: { theme: "light" | "dark" }) {
   // targets are created Obsidian-style.
   const wikilinkContext = useMemo(
     () => ({
-      resolve: (target: string) => resolveWikilinkTarget(target, app.store.getState().paths),
+      resolve: (target: string) =>
+        resolveWikilinkTarget(target, app.store.getState().paths),
       open: (path: string) => app.openFile(path),
       openOrCreate: async (target: string) => {
-        const resolved = resolveWikilinkTarget(target, app.store.getState().paths);
+        const resolved = resolveWikilinkTarget(
+          target,
+          app.store.getState().paths,
+        );
         if (resolved) {
           app.openFile(resolved);
           return;
@@ -80,12 +92,12 @@ export function Shell({ theme }: { theme: "light" | "dark" }) {
           app.openFile(created);
         } catch (err) {
           setActionError(
-            `Couldn't create “${target}”: ${err instanceof Error ? err.message : String(err)}`
+            `Couldn't create “${target}”: ${err instanceof Error ? err.message : String(err)}`,
           );
         }
       },
     }),
-    [app]
+    [app],
   );
 
   useEffect(() => {
@@ -100,14 +112,14 @@ export function Shell({ theme }: { theme: "light" | "dark" }) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [repoRoot]);
 
-  // Contribute editor actions to the app-level command palette (Cmd/Ctrl+K).
-  usePaletteCommands(
+  // Contribute editor actions to the owning app shell.
+  useHostCommands(
     useMemo(
       () => [
-        { id: "quickOpen", label: "Quick open file…", section: "Editor" },
-        { id: "newNote", label: "New note", section: "Editor" },
+        { id: "quickOpen", label: "Quick open file…", group: "Editor" },
+        { id: "newNote", label: "New note", group: "Editor" },
       ],
-      []
+      [],
     ),
     (id) => {
       if (id === "quickOpen") setQuickOpen(true);
@@ -115,16 +127,19 @@ export function Shell({ theme }: { theme: "light" | "dark" }) {
         void (async () => {
           try {
             setActionError(null);
-            const created = await app.vault.createFile("Untitled", "# Untitled\n\n");
+            const created = await app.vault.createFile(
+              "Untitled",
+              "# Untitled\n\n",
+            );
             app.openFile(created);
           } catch (err) {
             setActionError(
-              `Couldn't create a new note: ${err instanceof Error ? err.message : String(err)}`
+              `Couldn't create a new note: ${err instanceof Error ? err.message : String(err)}`,
             );
           }
         })();
       }
-    }
+    },
   );
 
   if (repoRoot === null) {
@@ -164,7 +179,10 @@ export function Shell({ theme }: { theme: "light" | "dark" }) {
       {isMobile ? (
         <MobileWorkspace theme={theme} onQuickOpen={() => setQuickOpen(true)} />
       ) : (
-        <DesktopWorkspace theme={theme} onQuickOpen={() => setQuickOpen(true)} />
+        <DesktopWorkspace
+          theme={theme}
+          onQuickOpen={() => setQuickOpen(true)}
+        />
       )}
       <QuickOpenDialog open={quickOpen} onOpenChange={setQuickOpen} />
     </WikilinkContext.Provider>
@@ -173,12 +191,21 @@ export function Shell({ theme }: { theme: "light" | "dark" }) {
 
 function PickerScreen() {
   const app = useApp();
-  const agentHandle = useAppState((s) => s.roster[0]?.handle ?? s.installedAgents[0]?.handle);
+  const agentHandle = useAppState(
+    (s) => s.roster[0]?.handle ?? s.installedAgents[0]?.handle,
+  );
   const vaultError = useAppState((s) => s.vaultError);
   const vaultPendingPath = useAppState((s) => s.vaultPendingPath);
   return (
     <Flex direction="column" style={{ height: "100%", minHeight: 0 }}>
-      <Flex align="center" justify="between" gap="3" px="3" py="2" className="spectrolite-header">
+      <Flex
+        align="center"
+        justify="between"
+        gap="3"
+        px="3"
+        py="2"
+        className="spectrolite-header"
+      >
         <Brand />
         <AgentBadges />
       </Flex>
@@ -234,7 +261,14 @@ function DesktopWorkspace({
 
   return (
     <Flex direction="column" style={{ height: "100%", minHeight: 0 }}>
-      <Flex align="center" justify="between" gap="3" px="3" py="2" className="spectrolite-header">
+      <Flex
+        align="center"
+        justify="between"
+        gap="3"
+        px="3"
+        py="2"
+        className="spectrolite-header"
+      >
         <Flex align="center" gap="2" style={{ minWidth: 0, flex: 1 }}>
           <Brand />
           <Button
@@ -248,7 +282,12 @@ function DesktopWorkspace({
             {vaultName(repoRoot)}
           </Button>
           {activeTitle ? (
-            <Text size="1" color="gray" truncate title={activePath ?? activeTitle}>
+            <Text
+              size="1"
+              color="gray"
+              truncate
+              title={activePath ?? activeTitle}
+            >
               / {activeTitle}
             </Text>
           ) : null}
@@ -353,7 +392,13 @@ function MobileWorkspace({
           <HamburgerMenuIcon />
         </IconButton>
         <Box style={{ flex: 1, minWidth: 0 }}>
-          <Text size="2" weight="medium" truncate as="div" title={activePath ?? undefined}>
+          <Text
+            size="2"
+            weight="medium"
+            truncate
+            as="div"
+            title={activePath ?? undefined}
+          >
             {activeTitle ?? "Spectrolite"}
           </Text>
           <Text size="1" color="gray" truncate as="div">
@@ -382,7 +427,11 @@ function MobileWorkspace({
       </Flex>
 
       <Box style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
-        <EditorPane theme={theme} mobile onOpenFiles={() => setSidebarOpen(true)} />
+        <EditorPane
+          theme={theme}
+          mobile
+          onOpenFiles={() => setSidebarOpen(true)}
+        />
       </Box>
 
       {/* One compact action bar (Send + Publish), not a separate strip — every
@@ -427,14 +476,21 @@ function MobileWorkspace({
             <FileTree onOpened={() => setSidebarOpen(false)} />
           </Box>
           <Box
-            style={{ maxHeight: "32vh", borderTop: "1px solid var(--gray-4)", overflow: "hidden" }}
+            style={{
+              maxHeight: "32vh",
+              borderTop: "1px solid var(--gray-4)",
+              overflow: "hidden",
+            }}
           >
             <BacklinksPanel onOpened={() => setSidebarOpen(false)} />
           </Box>
         </Flex>
       </MobileSidebar>
 
-      <SettingsDrawer open={settingsSheetOpen} onOpenChange={setSettingsSheetOpen} />
+      <SettingsDrawer
+        open={settingsSheetOpen}
+        onOpenChange={setSettingsSheetOpen}
+      />
     </Flex>
   );
 }

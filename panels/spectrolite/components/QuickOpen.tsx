@@ -6,10 +6,19 @@
  */
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { FilePlusIcon, FileTextIcon, MagnifyingGlassIcon } from "@radix-ui/react-icons";
-import { CommandPalette, type CommandItem } from "@workspace/ui";
+import {
+  FilePlusIcon,
+  FileTextIcon,
+  MagnifyingGlassIcon,
+} from "@radix-ui/react-icons";
+import { CommandPalette, type CommandItem } from "@workspace/ui/command";
 import { useApp, useAppState } from "../app/context";
-import { computeQuickOpen, fuzzyMatch, labelFor, matchRanges } from "./quickOpenModel";
+import {
+  computeQuickOpen,
+  fuzzyMatch,
+  labelFor,
+  matchRanges,
+} from "./quickOpenModel";
 
 function highlightedText(text: string, query: string): ReactNode {
   // Reuse the model's single fuzzy walk, then mark contiguous matched runs —
@@ -24,7 +33,7 @@ function highlightedText(text: string, query: string): ReactNode {
     out.push(
       <mark key={i} className="spectrolite-quick-match">
         {text.slice(start, end)}
-      </mark>
+      </mark>,
     );
     cursor = end;
   });
@@ -32,7 +41,9 @@ function highlightedText(text: string, query: string): ReactNode {
   return <>{out}</>;
 }
 
-type QuickAction = { kind: "open"; path: string } | { kind: "create"; name: string };
+type QuickAction =
+  | { kind: "open"; path: string }
+  | { kind: "create"; name: string };
 
 export function QuickOpenDialog({
   open,
@@ -54,7 +65,7 @@ export function QuickOpenDialog({
 
   const { results, createName, canCreate, section } = useMemo(
     () => computeQuickOpen({ paths, recentPaths, query }),
-    [paths, recentPaths, query]
+    [paths, recentPaths, query],
   );
 
   const items = useMemo<CommandItem<QuickAction>[]>(() => {
@@ -110,7 +121,11 @@ export function QuickOpenDialog({
       searchIcon={<MagnifyingGlassIcon />}
       maxWidth={560}
       emptyMessage={
-        pathsError ? pathsError : query.trim() ? "No matching notes." : "Type to search this vault."
+        pathsError
+          ? pathsError
+          : query.trim()
+            ? "No matching notes."
+            : "Type to search this vault."
       }
     />
   );

@@ -15,9 +15,13 @@
 
 import { panel, contextId as runtimeContextId, rpc } from "@workspace/runtime";
 import { EventsClient } from "@vibestudio/service-schemas/clients/eventsClient";
-import { createPanelSandboxConfig } from "@workspace/agentic-core";
+import { createPanelImportLoader } from "@workspace/agentic-core";
 import { createStore, type Store } from "./store";
-import { initialState, type PendingSuggestion, type SpectroliteState } from "./state";
+import {
+  initialState,
+  type PendingSuggestion,
+  type SpectroliteState,
+} from "./state";
 import { SessionController } from "./sessionController";
 import { VaultController } from "./vaultController";
 import { normalizeVaultPath } from "./vaultContext";
@@ -26,7 +30,10 @@ import { createViewStateStore, type ViewStateStore } from "../coedit/viewState";
 import { parseFrontmatter, diffDependencies } from "../mdx/frontmatter";
 import { prefetchDependencies } from "../mdx/depPrefetch";
 import type { Collision } from "../coedit/blockReconcile";
-import { requireSpectroliteContextId, type InstalledAgentRecord } from "../bootstrap";
+import {
+  requireSpectroliteContextId,
+  type InstalledAgentRecord,
+} from "../bootstrap";
 import { spectroliteE2EHooksEnabled } from "./e2eHooks";
 import { VaultSemanticVcs } from "./semanticVcs";
 
@@ -68,18 +75,20 @@ export interface SpectroliteApp {
   registerReloadActiveDoc(reload: ReloadActiveDoc | null): void;
   /** Commit the active doc's working copy now with a message (Send-to-scribe
    *  flush-first). NOT called on typing — only on deliberate user gestures. */
-  commitActiveDoc(message: string): Promise<{ eventId: string; changed: boolean } | null>;
+  commitActiveDoc(
+    message: string,
+  ): Promise<{ eventId: string; changed: boolean } | null>;
   flushActiveDoc(): Promise<void>;
   workingStateChanged(
     path: string,
-    reason: "local-edit" | "observed" | "commit"
+    reason: "local-edit" | "observed" | "commit",
   ): Promise<void>;
   start(): void;
   dispose(): void;
 }
 
 export type CommitActiveDoc = (
-  message: string
+  message: string,
 ) => Promise<{ eventId: string; changed: boolean } | null>;
 export type FlushActiveDoc = () => Promise<void>;
 /** Re-read the active document at the current exact working state. */
@@ -104,7 +113,11 @@ type SpectroliteE2EGlobal = typeof globalThis & {
       availableAgents: Array<{ id: string; className: string }>;
       channelName: string | null;
       contextId: string | null;
-      installedAgents: Array<{ handle: string; className: string; key: string }>;
+      installedAgents: Array<{
+        handle: string;
+        className: string;
+        key: string;
+      }>;
       lastAdd: {
         agentId: string | null;
         error: string | null;
@@ -119,7 +132,10 @@ type SpectroliteE2EGlobal = typeof globalThis & {
 export function createSpectroliteApp(): SpectroliteApp {
   const args = panel.stateArgs.get<PersistedStateArgs>();
   const contextId = requireSpectroliteContextId(runtimeContextId);
-  const repoRoot = typeof args.repoRoot === "string" ? normalizeVaultPath(args.repoRoot) : null;
+  const repoRoot =
+    typeof args.repoRoot === "string"
+      ? normalizeVaultPath(args.repoRoot)
+      : null;
   const store = createStore(
     initialState({
       contextId,
@@ -127,10 +143,11 @@ export function createSpectroliteApp(): SpectroliteApp {
       repoRoot,
       openPath: args.openPath ?? null,
       installedAgents: args.installedAgents ?? [],
-    })
+    }),
   );
 
-  let semanticVcs = contextId && repoRoot ? new VaultSemanticVcs(contextId, repoRoot) : null;
+  let semanticVcs =
+    contextId && repoRoot ? new VaultSemanticVcs(contextId, repoRoot) : null;
 
   const viewState = createViewStateStore();
   // The active document reloads after semantic integration remaps the context
@@ -146,11 +163,15 @@ export function createSpectroliteApp(): SpectroliteApp {
   const publish = new PublishController(
     semanticVcs,
     () => (reloadActiveDocFn ? reloadActiveDocFn() : Promise.resolve()),
-    (message) => (commitActiveDocFn ? commitActiveDocFn(message) : Promise.resolve(null))
+    (message) =>
+      commitActiveDocFn ? commitActiveDocFn(message) : Promise.resolve(null),
   );
 
   const bindVault = (nextRepoRoot: string | null): VaultSemanticVcs | null => {
-    semanticVcs = contextId && nextRepoRoot ? new VaultSemanticVcs(contextId, nextRepoRoot) : null;
+    semanticVcs =
+      contextId && nextRepoRoot
+        ? new VaultSemanticVcs(contextId, nextRepoRoot)
+        : null;
     publish.bindSession(semanticVcs);
     lastObservedWorkingState = null;
     return semanticVcs;
@@ -160,7 +181,9 @@ export function createSpectroliteApp(): SpectroliteApp {
   // into the panel's module map so inline JSX compilation can resolve them.
   // Mirrors the local sandbox LiveJsxEditor and
   // runtimeNamespace each build for live compile.
-  const depSandbox = createPanelSandboxConfig(rpc);
+  const dependencyImportLoader = createPanelImportLoader(rpc, {
+    defaultWorkspaceRef: () => `ctx:${contextId}`,
+  });
 
   // The active doc's last-seen frontmatter deps (so inline JSX tracks edits
   // without re-parsing on every keystroke at the app layer).
@@ -180,9 +203,15 @@ export function createSpectroliteApp(): SpectroliteApp {
       return;
     lastDeps = next;
     store.setState({ activeDeps: next });
-    void prefetchDependencies(depSandbox, { ...added, ...changed }, (line) => {
-      console.info(line);
-    }).catch((err) => console.warn("[Spectrolite] dependency prefetch failed:", err));
+    void prefetchDependencies(
+      dependencyImportLoader,
+      { ...added, ...changed },
+      (line) => {
+        console.info(line);
+      },
+    ).catch((err) =>
+      console.warn("[Spectrolite] dependency prefetch failed:", err),
+    );
   };
 
   const session = new SessionController(store);
@@ -201,22 +230,29 @@ export function createSpectroliteApp(): SpectroliteApp {
         scheduleSemanticWatch();
       },
     },
-    semanticVcs
+    semanticVcs,
   );
 
-  const applyOpenFile = (path: string, extraStateArgs?: Record<string, unknown>): void => {
+  const applyOpenFile = (
+    path: string,
+    extraStateArgs?: Record<string, unknown>,
+  ): void => {
     if (store.getState().activePath === path) {
-      if (extraStateArgs) void panel.stateArgs.set({ openPath: path, ...extraStateArgs });
+      if (extraStateArgs)
+        void panel.stateArgs.set({ openPath: path, ...extraStateArgs });
       return;
     }
     store.setState((prev) => ({
       activePath: path,
-      recentPaths: [path, ...prev.recentPaths.filter((p) => p !== path)].slice(0, 12),
+      recentPaths: [path, ...prev.recentPaths.filter((p) => p !== path)].slice(
+        0,
+        12,
+      ),
       // A doc switch clears stale deps; setActiveDocSource re-derives them.
       activeDeps: {},
       // Suggestions are per-doc; drop any not for the new doc on open.
       pendingSuggestions: prev.pendingSuggestions.filter(
-        (s) => s.vcsPath === vault.mapping().toVcsPath(path)
+        (s) => s.vcsPath === vault.mapping().toVcsPath(path),
       ),
     }));
     lastDeps = {};
@@ -225,7 +261,7 @@ export function createSpectroliteApp(): SpectroliteApp {
   let documentTransition: Promise<void> = Promise.resolve();
   const openFileInternal = (
     path: string,
-    extraStateArgs?: Record<string, unknown>
+    extraStateArgs?: Record<string, unknown>,
   ): Promise<void> => {
     documentTransition = documentTransition
       .then(async () => {
@@ -235,7 +271,10 @@ export function createSpectroliteApp(): SpectroliteApp {
       .catch((error) => {
         // The active editor owns the visible save error. Keep it mounted and
         // keep the queue usable once the user repairs the document.
-        console.warn("[Spectrolite] navigation paused for an unsaved note:", error);
+        console.warn(
+          "[Spectrolite] navigation paused for an unsaved note:",
+          error,
+        );
       });
     return documentTransition;
   };
@@ -252,8 +291,14 @@ export function createSpectroliteApp(): SpectroliteApp {
     void vault.refreshPaths();
     void publish.refresh();
   };
-  const stateIdentity = (state: { kind: string; eventId?: string; applicationId?: string }) =>
-    state.kind === "event" ? `event:${state.eventId ?? ""}` : `application:${state.applicationId ?? ""}`;
+  const stateIdentity = (state: {
+    kind: string;
+    eventId?: string;
+    applicationId?: string;
+  }) =>
+    state.kind === "event"
+      ? `event:${state.eventId ?? ""}`
+      : `application:${state.applicationId ?? ""}`;
   const scheduleSemanticWatch = (): void => {
     if (!started || semanticWatchTimer || !semanticVcs) return;
     semanticWatchTimer = setTimeout(() => {
@@ -265,12 +310,17 @@ export function createSpectroliteApp(): SpectroliteApp {
         .then((revision) => {
           if (watched !== semanticVcs || !started) return;
           const next = stateIdentity(revision.status.workingHead);
-          if (lastObservedWorkingState !== null && next !== lastObservedWorkingState) {
+          if (
+            lastObservedWorkingState !== null &&
+            next !== lastObservedWorkingState
+          ) {
             refreshVaultSidebars();
           }
           lastObservedWorkingState = next;
         })
-        .catch((error) => console.debug("[Spectrolite] semantic watch failed:", error))
+        .catch((error) =>
+          console.debug("[Spectrolite] semantic watch failed:", error),
+        )
         .finally(scheduleSemanticWatch);
     }, 1200);
   };
@@ -310,11 +360,14 @@ export function createSpectroliteApp(): SpectroliteApp {
       }));
     },
     resolveSuggestion(id, resolved) {
-      const suggestion = store.getState().pendingSuggestions.find((s) => s.id === id);
+      const suggestion = store
+        .getState()
+        .pendingSuggestions.find((s) => s.id === id);
       if (
         resolved &&
         suggestion &&
-        suggestion.vcsPath === vault.mapping().toVcsPath(store.getState().activePath ?? "")
+        suggestion.vcsPath ===
+          vault.mapping().toVcsPath(store.getState().activePath ?? "")
       ) {
         try {
           suggestionApplier?.(resolved);
@@ -324,7 +377,9 @@ export function createSpectroliteApp(): SpectroliteApp {
       }
       store.setState((prev) => {
         const next = prev.pendingSuggestions.filter((s) => s.id !== id);
-        return next.length === prev.pendingSuggestions.length ? {} : { pendingSuggestions: next };
+        return next.length === prev.pendingSuggestions.length
+          ? {}
+          : { pendingSuggestions: next };
       });
     },
     registerSuggestionApplier(applier) {
@@ -340,7 +395,9 @@ export function createSpectroliteApp(): SpectroliteApp {
       reloadActiveDocFn = reload;
     },
     commitActiveDoc(message) {
-      return commitActiveDocFn ? commitActiveDocFn(message) : Promise.resolve(null);
+      return commitActiveDocFn
+        ? commitActiveDocFn(message)
+        : Promise.resolve(null);
     },
     flushActiveDoc() {
       return flushActiveDocFn ? flushActiveDocFn() : Promise.resolve();
@@ -374,7 +431,10 @@ export function createSpectroliteApp(): SpectroliteApp {
       }
       if (semanticEvents) {
         void semanticEvents?.subscribe("vcs:publication").catch((error) => {
-          console.warn("[Spectrolite] failed to subscribe to VCS publications:", error);
+          console.warn(
+            "[Spectrolite] failed to subscribe to VCS publications:",
+            error,
+          );
         });
       }
       scheduleSemanticWatch();

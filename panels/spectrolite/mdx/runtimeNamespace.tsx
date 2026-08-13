@@ -15,16 +15,30 @@
  * `DocStateContext.Provider` mounted in `DocumentEditor`.
  */
 
-import { createContext, useContext, useEffect, useMemo, useState, type ComponentType } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ComponentType,
+} from "react";
 import { Card, Flex, Text } from "@radix-ui/themes";
 import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
 import { compileComponent, type SandboxOptions } from "@workspace/eval";
-import { createPanelSandboxConfig } from "@workspace/agentic-core";
-import { rpc } from "@workspace/runtime";
-import { useIsMobile, useTouchDevice, useViewportHeight } from "@workspace/react";
+import { createPanelImportLoader } from "@workspace/agentic-core";
+import { contextId, rpc } from "@workspace/runtime";
+import { requireSpectroliteContextId } from "../bootstrap";
+import {
+  useIsMobile,
+  useTouchDevice,
+  useViewportHeight,
+} from "@workspace/react";
 import { useDocState } from "./docState";
 
-const sandbox = createPanelSandboxConfig(rpc);
+const loadImport = createPanelImportLoader(rpc, {
+  defaultWorkspaceRef: () => `ctx:${requireSpectroliteContextId(contextId)}`,
+});
 
 /** Frontmatter-declared deps, merged into every `<runtime.Eval>` compile. */
 export const DepsContext = createContext<Record<string, string>>({});
@@ -68,19 +82,20 @@ export function LiveEval({ code, imports }: EvalProps) {
     setComponent(null);
     const opts: SandboxOptions = {
       imports: mergedImports,
-      loadImport: sandbox.loadImport,
+      loadImport,
     };
     const wrapped = EVAL_PRELUDE + code;
-    void compileComponent(wrapped, opts as Parameters<typeof compileComponent>[1]).then(
-      (result) => {
-        if (cancelled) return;
-        if (result.success && result.Component) {
-          setComponent(() => result.Component as ComponentType);
-        } else {
-          setError(result.error ?? "compile failed");
-        }
+    void compileComponent(
+      wrapped,
+      opts as Parameters<typeof compileComponent>[1],
+    ).then((result) => {
+      if (cancelled) return;
+      if (result.success && result.Component) {
+        setComponent(() => result.Component as ComponentType);
+      } else {
+        setError(result.error ?? "compile failed");
       }
-    );
+    });
     return () => {
       cancelled = true;
     };

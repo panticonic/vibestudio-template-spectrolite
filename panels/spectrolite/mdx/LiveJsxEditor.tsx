@@ -5,7 +5,7 @@
  * element. We serialize the full subtree (including nested JSX, paragraphs,
  * lists, etc.) back to MDX source via `mdast-util-to-markdown` +
  * `mdast-util-mdx-jsx`, then compile-and-render it via `compileComponent`
- * with `createPanelSandboxConfig(rpc)` bindings — so live JSX in the
+ * with the panel's build-backed import loader — so live JSX in the
  * document has full access to the panel runtime (rpc, fs, vcs, ...),
  * which is the "MDX eval environment with full runtime access" goal.
  *
@@ -41,8 +41,8 @@ import type { JsxEditorProps } from "@workspace/mdx-editor-core";
 import { Box, Card, Code, Flex, Text } from "@radix-ui/themes";
 import { ExclamationTriangleIcon, Pencil1Icon } from "@radix-ui/react-icons";
 import { compileComponent } from "@workspace/eval";
-import { createPanelSandboxConfig } from "@workspace/agentic-core";
-import { rpc } from "@workspace/runtime";
+import { createPanelImportLoader } from "@workspace/agentic-core";
+import { contextId, rpc } from "@workspace/runtime";
 import { mdxComponents } from "@workspace/agentic-chat";
 import { nodeToMdxSource } from "./mdastSerialize";
 import { WikiLink as SpectroliteWikiLink } from "./components";
@@ -50,6 +50,7 @@ import { fromMarkdown } from "mdast-util-from-markdown";
 import { assembleMdxConfig } from "@workspace/mdx-editor-core";
 import type { MdastJsx } from "@workspace/mdx-editor-core";
 import { wikilinkValue } from "./wikilink";
+import { requireSpectroliteContextId } from "../bootstrap";
 
 // Inline MDX is compiled as an isolated module. Publish the host component so
 // the compiled module renders the same context-aware wikilink as the rest of
@@ -60,15 +61,17 @@ import { wikilinkValue } from "./wikilink";
   }
 ).__spectroliteWikiLinkComponent__ = SpectroliteWikiLink;
 
-const sandbox = createPanelSandboxConfig(rpc);
+const loadImport = createPanelImportLoader(rpc, {
+  defaultWorkspaceRef: () => `ctx:${requireSpectroliteContextId(contextId)}`,
+});
 const BASE_LIVE_JSX_IMPORTS = { "@workspace/agentic-chat": "latest" } as const;
 
 // PascalCase component names exported by @workspace/agentic-chat that we
 // inject unconditionally into the live-compile wrapper. The set mirrors
 // the chat panel's MDX component surface so docs are portable.
-const importedNames = Object.keys(mdxComponents as Record<string, unknown>).filter((n) =>
-  /^[A-Z]/.test(n)
-);
+const importedNames = Object.keys(
+  mdxComponents as Record<string, unknown>,
+).filter((n) => /^[A-Z]/.test(n));
 const importList = importedNames.join(", ");
 
 /** Preserved top-level MDX module declarations visible to each live JSX node. */
@@ -148,9 +151,15 @@ export interface LiveJsxEditorOwnProps {
 export function LiveJsxEditor(props: JsxEditorProps & LiveJsxEditorOwnProps) {
   const { mdastNode, descriptor, dependencies, onChange } = props;
   const moduleSource = useContext(DocModuleSourceContext);
-  const tagName = (mdastNode as unknown as MdastJsxLike).name ?? descriptor.name ?? "Fragment";
+  const tagName =
+    (mdastNode as unknown as MdastJsxLike).name ??
+    descriptor.name ??
+    "Fragment";
   const source = useMemo(() => nodeToMdxSource(mdastNode), [mdastNode]);
-  const wrapped = useMemo(() => wrapForSandbox(source, moduleSource), [source, moduleSource]);
+  const wrapped = useMemo(
+    () => wrapForSandbox(source, moduleSource),
+    [source, moduleSource],
+  );
   const [Component, setComponent] = useState<ComponentType | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
@@ -176,7 +185,7 @@ export function LiveJsxEditor(props: JsxEditorProps & LiveJsxEditorOwnProps) {
       ...(dependencies ?? {}),
     };
     void compileComponent(wrapped, {
-      loadImport: sandbox.loadImport,
+      loadImport,
       sourcePath: `panels/spectrolite/inline-jsx-${tagName === "*" ? "wild" : tagName}.tsx`,
       imports: compileImports,
     }).then((result) => {
@@ -201,7 +210,8 @@ export function LiveJsxEditor(props: JsxEditorProps & LiveJsxEditorOwnProps) {
       });
       const direct = tree.children[0];
       const candidate =
-        direct?.type === "mdxJsxFlowElement" || direct?.type === "mdxJsxTextElement"
+        direct?.type === "mdxJsxFlowElement" ||
+        direct?.type === "mdxJsxTextElement"
           ? direct
           : direct?.type === "paragraph" && direct.children.length === 1
             ? direct.children[0]
@@ -209,7 +219,8 @@ export function LiveJsxEditor(props: JsxEditorProps & LiveJsxEditorOwnProps) {
       if (
         tree.children.length !== 1 ||
         !candidate ||
-        (candidate.type !== "mdxJsxFlowElement" && candidate.type !== "mdxJsxTextElement")
+        (candidate.type !== "mdxJsxFlowElement" &&
+          candidate.type !== "mdxJsxTextElement")
       ) {
         throw new Error("Source must contain exactly one JSX element");
       }
@@ -217,7 +228,9 @@ export function LiveJsxEditor(props: JsxEditorProps & LiveJsxEditorOwnProps) {
       setSourceError(null);
       setEditing(false);
     } catch (nextError) {
-      setSourceError(nextError instanceof Error ? nextError.message : String(nextError));
+      setSourceError(
+        nextError instanceof Error ? nextError.message : String(nextError),
+      );
     }
   };
 
@@ -231,10 +244,18 @@ export function LiveJsxEditor(props: JsxEditorProps & LiveJsxEditorOwnProps) {
             spellCheck={false}
             onChange={(event) => setDraft(event.target.value)}
           />
-          {sourceError ? <Text size="1" color="red">{sourceError}</Text> : null}
+          {sourceError ? (
+            <Text size="1" color="red">
+              {sourceError}
+            </Text>
+          ) : null}
           <Flex gap="2" justify="end">
-            <button type="button" onClick={() => setEditing(false)}>Cancel</button>
-            <button type="button" onClick={saveSource}>Apply source</button>
+            <button type="button" onClick={() => setEditing(false)}>
+              Cancel
+            </button>
+            <button type="button" onClick={saveSource}>
+              Apply source
+            </button>
           </Flex>
         </Flex>
       </Card>
@@ -243,7 +264,10 @@ export function LiveJsxEditor(props: JsxEditorProps & LiveJsxEditorOwnProps) {
 
   if (nativeWikilink) {
     return (
-      <Box className="spectrolite-jsx-block" style={{ position: "relative", display: "inline" }}>
+      <Box
+        className="spectrolite-jsx-block"
+        style={{ position: "relative", display: "inline" }}
+      >
         <SpectroliteWikiLink target={nativeWikilink.target}>
           {nativeWikilink.label}
         </SpectroliteWikiLink>
@@ -350,7 +374,10 @@ class LiveJsxRuntimeBoundary extends ReactComponent<
     return { error: error instanceof Error ? error.message : String(error) };
   }
 
-  override componentDidUpdate(prevProps: { tagName: string; children: ReactNode }): void {
+  override componentDidUpdate(prevProps: {
+    tagName: string;
+    children: ReactNode;
+  }): void {
     if (prevProps.children !== this.props.children && this.state.error) {
       this.setState({ error: null });
     }
@@ -358,7 +385,12 @@ class LiveJsxRuntimeBoundary extends ReactComponent<
 
   override render() {
     if (this.state.error) {
-      return <LiveJsxErrorCard tagName={this.props.tagName} error={this.state.error} />;
+      return (
+        <LiveJsxErrorCard
+          tagName={this.props.tagName}
+          error={this.state.error}
+        />
+      );
     }
     return this.props.children;
   }

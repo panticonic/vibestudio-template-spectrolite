@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 
-import React from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { Theme } from "@radix-ui/themes";
@@ -12,15 +11,21 @@ function renderEditor(yaml: string) {
   const utils = render(
     <Theme>
       <FrontmatterEditor yaml={yaml} onChange={onChange} />
-    </Theme>
+    </Theme>,
   );
   return { onChange, ...utils };
 }
 
-const SAMPLE = ["title: Welcome", "dependencies:", "  lodash: npm:^4.17.21"].join("\n");
+const SAMPLE = [
+  "title: Welcome",
+  "dependencies:",
+  "  lodash: npm:^4.17.21",
+].join("\n");
 
 /** The YAML the editor most recently emitted, parsed. */
-function lastEmitted(onChange: ReturnType<typeof vi.fn>): Record<string, unknown> {
+function lastEmitted(
+  onChange: ReturnType<typeof vi.fn>,
+): Record<string, unknown> {
   const call = onChange.mock.calls.at(-1);
   expect(call, "expected onChange to have been called").toBeTruthy();
   return YAML.parse(call![0]) as Record<string, unknown>;
@@ -36,7 +41,9 @@ describe("FrontmatterEditor", () => {
 
   it("emits updated YAML when a scalar value is edited", () => {
     const { onChange } = renderEditor(SAMPLE);
-    fireEvent.change(screen.getByDisplayValue("Welcome"), { target: { value: "Hello" } });
+    fireEvent.change(screen.getByDisplayValue("Welcome"), {
+      target: { value: "Hello" },
+    });
     const emitted = lastEmitted(onChange);
     expect(emitted["title"]).toBe("Hello");
     expect(emitted["dependencies"]).toEqual({ lodash: "npm:^4.17.21" });
@@ -55,8 +62,12 @@ describe("FrontmatterEditor", () => {
     fireEvent.click(addButtons[addButtons.length - 1]!);
     const nameInputs = screen.getAllByLabelText("Package name");
     const refInputs = screen.getAllByLabelText("Package reference");
-    fireEvent.change(nameInputs[nameInputs.length - 1]!, { target: { value: "date-fns" } });
-    fireEvent.change(refInputs[refInputs.length - 1]!, { target: { value: "npm:^2.30.0" } });
+    fireEvent.change(nameInputs[nameInputs.length - 1]!, {
+      target: { value: "date-fns" },
+    });
+    fireEvent.change(refInputs[refInputs.length - 1]!, {
+      target: { value: "npm:^2.30.0" },
+    });
     expect(lastEmitted(onChange)["dependencies"]).toEqual({
       lodash: "npm:^4.17.21",
       "date-fns": "npm:^2.30.0",
@@ -84,7 +95,7 @@ describe("FrontmatterEditor", () => {
     rerender(
       <Theme>
         <FrontmatterEditor yaml="title: Replaced" onChange={vi.fn()} />
-      </Theme>
+      </Theme>,
     );
     expect(screen.getByDisplayValue("Replaced")).toBeTruthy();
   });
@@ -92,7 +103,9 @@ describe("FrontmatterEditor", () => {
   it("collapses to just the header", () => {
     renderEditor(SAMPLE);
     expect(screen.getByDisplayValue("Welcome")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /collapse properties/i }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /collapse properties/i }),
+    );
     expect(screen.queryByDisplayValue("Welcome")).toBeNull();
   });
 });
