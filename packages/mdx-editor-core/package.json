@@ -37,7 +37,7 @@
     "unist-util-visit": "5.1.0"
   },
   "peerDependencies": {
-    "react": "^19.0.0"
+    "react": "19.0.0"
   },
   "devDependencies": {
     "@types/mdast": "4.0.4",
