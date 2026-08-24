@@ -1,4 +1,4 @@
-systemEpoch: 61
+systemEpoch: 62
 template:
   name: Spectrolite
   description: An MDX writing and editing workspace with collaborative agent tooling.
