@@ -189,13 +189,14 @@
     "mdast-util-mdx-jsx": "^3.2.0",
     "remark-wiki-link": "^2.0.1",
     "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "diff": "^8.0.4",
     "yaml": "^2.9.0"
   },
   "devDependencies": {
+    "@testing-library/dom": "^10.0.0",
     "@testing-library/react": "^16.3.2",
     "@types/mdast": "^4.0.4",
-    "vitest": "^3.2.7",
-    "@testing-library/dom": "^10.0.0"
+    "vitest": "^3.2.7"
   }
 }
