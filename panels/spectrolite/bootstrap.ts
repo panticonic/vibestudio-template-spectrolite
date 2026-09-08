@@ -8,13 +8,12 @@
 
 import { rpc } from "@workspace/runtime";
 import { parseDoTargetId } from "@workspace/runtime/workerd-client";
+import type { PubSubClient } from "@workspace/pubsub";
 import {
   launchAgentIntoChannel,
   retireAgentEntity,
   unsubscribeAgentFromChannel,
 } from "@workspace/agentic-core";
-
-const CHANNEL_SERVICE_PROTOCOL = "vibestudio.channel.v1";
 
 export interface InstalledAgentRecord {
   agentId: string;
@@ -74,31 +73,16 @@ export async function createAndSubscribeAgent(
   return { ...subscription, ...(handle.id ? { entityId: handle.id } : {}) };
 }
 
-interface ChannelParticipant {
-  participantId: string;
-  metadata: Record<string, unknown>;
-}
-
 export interface ChannelDORef {
   source: string;
   className: string;
   objectKey: string;
 }
 
-export async function getChannelDOParticipants(channelId: string): Promise<ChannelDORef[]> {
-  const channelService = await rpc.call<{ kind: string; targetId?: string }>(
-    "main",
-    "workers.resolveService",
-    [CHANNEL_SERVICE_PROTOCOL, channelId]
-  );
-  if (channelService.kind !== "durable-object" || !channelService.targetId) {
-    throw new Error("Channel service must resolve to a Durable Object service");
-  }
-  const participants = await rpc.call<ChannelParticipant[]>(
-    channelService.targetId,
-    "getParticipants",
-    []
-  );
+export async function getChannelDOParticipants(
+  channel: Pick<PubSubClient, "getParticipants">
+): Promise<ChannelDORef[]> {
+  const participants = await channel.getParticipants();
   // Delegate to the canonical parser in `@workspace/runtime/workerd-client`
   // rather than maintaining a local copy. If upstream evolves the
   // do-target format (e.g. to handle no-slash sources), Spectrolite

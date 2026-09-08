@@ -6,6 +6,7 @@ import { SessionController } from "./sessionController";
 
 const pubsubMocks = vi.hoisted(() => {
   const client = {
+    getParticipants: vi.fn(async () => []),
     ready: vi.fn(async () => undefined),
     onRoster: vi.fn(() => () => {}),
     events: vi.fn(async function* () {}),
@@ -20,7 +21,9 @@ const pubsubMocks = vi.hoisted(() => {
 
 const bootstrapMocks = vi.hoisted(() => ({
   createAndSubscribeAgent: vi.fn(async () => ({})),
-  getChannelDOParticipants: vi.fn<() => Promise<ChannelDORef[]>>(async () => []),
+  getChannelDOParticipants: vi.fn<
+    (channel: typeof pubsubMocks.client) => Promise<ChannelDORef[]>
+  >(async () => []),
   listAvailableAgents: vi.fn(async () => []),
   newAgentKey: vi.fn((handle: string) => `agent:${handle}`),
   newChannelName: vi.fn(() => "new-channel"),
@@ -61,6 +64,30 @@ describe("SessionController", () => {
     bootstrapMocks.getChannelDOParticipants.mockResolvedValue([]);
     bootstrapMocks.createAndSubscribeAgent.mockResolvedValue({});
     vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+
+  it("uses the connected channel client when reconciling resident agents", async () => {
+    const store = createStore(
+      initialState({
+        contextId: "ctx",
+        channelName: "chan",
+        repoRoot: "projects/default",
+        openPath: null,
+        installedAgents: [
+          {
+            agentId: "SilentAgentWorker",
+            handle: "scribe",
+            key: "agent:scribe",
+            source: "workers/silent-agent-worker",
+            className: "SilentAgentWorker",
+          },
+        ],
+      })
+    );
+
+    await new SessionController(store).start();
+
+    expect(bootstrapMocks.getChannelDOParticipants).toHaveBeenCalledWith(pubsubMocks.client);
   });
 
   afterEach(() => {
@@ -215,7 +242,9 @@ describe("SessionController", () => {
       },
     ]);
 
-    await new SessionController(store).removeAgent("test-agent");
+    const session = new SessionController(store);
+    await session.start();
+    await session.removeAgent("test-agent");
 
     expect(bootstrapMocks.unsubscribeDOFromChannel).toHaveBeenCalledWith(
       "workers/test-agent-worker",

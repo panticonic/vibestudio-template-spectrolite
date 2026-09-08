@@ -243,7 +243,9 @@ export class SessionController {
     // Optimistic hide; rolled back if the unsubscribe fails.
     this.store.setState((prev) => ({ removedHandles: [...prev.removedHandles, handle] }));
     try {
-      const workers = await getChannelDOParticipants(channelName);
+      const client = this.client;
+      if (!client) throw new Error("Channel not connected");
+      const workers = await getChannelDOParticipants(client);
       // Match by the EXACT objectKey we minted on subscribe; prefix-matching
       // by handle is unsafe when handles share prefixes ("scribe" vs "scribe-x").
       const record = state.installedAgents.find((a) => a.handle === handle);
@@ -376,7 +378,9 @@ export class SessionController {
       // Rehydration: if persisted agent keys are missing from the channel
       // DO list, re-create those agents with stable keys. This covers
       // host restarts, picker-screen restarts, and partial rehydrate failures.
-      const dos = await getChannelDOParticipants(channelName);
+      const client = this.client;
+      if (!client) throw new Error("Channel not connected");
+      const dos = await getChannelDOParticipants(client);
       const liveKeys = new Set(dos.map((worker) => worker.objectKey));
       const missing = state.installedAgents.filter((agent) => !liveKeys.has(agent.key));
       if (missing.length === 0) {
