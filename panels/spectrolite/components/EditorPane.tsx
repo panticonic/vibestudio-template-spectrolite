@@ -9,7 +9,15 @@
  */
 
 import { useCallback, useState } from "react";
-import { Box, Button, Callout, Flex, Heading, Spinner, Text } from "@radix-ui/themes";
+import {
+  Box,
+  Button,
+  Callout,
+  Flex,
+  Heading,
+  Spinner,
+  Text,
+} from "@radix-ui/themes";
 import {
   ExclamationTriangleIcon,
   FilePlusIcon,
@@ -73,12 +81,18 @@ export interface EditorPaneProps {
   mobile?: boolean;
 }
 
-export function EditorPane({ theme, onOpenFiles, mobile = false }: EditorPaneProps) {
+export function EditorPane({
+  theme,
+  onOpenFiles,
+  mobile = false,
+}: EditorPaneProps) {
   const app = useApp();
   const repoRoot = useAppState((s) => s.repoRoot);
   const activePath = useAppState((s) => s.activePath);
   const pathsLoading = useAppState((s) => s.pathsLoading || !s.pathsLoaded);
-  const vaultEmpty = useAppState((s) => s.pathsLoaded && !s.pathsLoading && s.paths.length === 0);
+  const vaultEmpty = useAppState(
+    (s) => s.pathsLoaded && !s.pathsLoading && s.paths.length === 0,
+  );
   const pathsError = useAppState((s) => s.pathsError);
   const activeDeps = useAppState((s) => s.activeDeps);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -87,10 +101,10 @@ export function EditorPane({ theme, onOpenFiles, mobile = false }: EditorPanePro
     try {
       setCreateError(null);
       const created = await app.vault.createFile(SAMPLE_DOC_NAME, SAMPLE_DOC);
-      app.openFile(created);
+      await app.openFile(created);
     } catch (err) {
       setCreateError(
-        `Couldn't create the note: ${err instanceof Error ? err.message : String(err)}`
+        `Couldn't create the note: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   }, [app]);
@@ -133,7 +147,8 @@ export function EditorPane({ theme, onOpenFiles, mobile = false }: EditorPanePro
             <Flex direction="column" gap="3">
               <Text>{pathsError}</Text>
               <Text size="1">
-                Your notes have not been changed. Retry the listing before creating anything.
+                Your notes have not been changed. Retry the listing before
+                creating anything.
               </Text>
               <Button
                 size="2"
@@ -153,12 +168,21 @@ export function EditorPane({ theme, onOpenFiles, mobile = false }: EditorPanePro
   if (vaultEmpty) {
     return (
       <Flex align="center" justify="center" style={{ height: "100%" }} p="6">
-        <Flex direction="column" align="center" gap="3" className="spectrolite-empty-card">
+        <Flex
+          direction="column"
+          align="center"
+          gap="3"
+          className="spectrolite-empty-card"
+        >
           <Heading size="4">This vault is empty</Heading>
           <Text size="2" color="gray" align="center">
             Create your first note to get started.
           </Text>
-          <Button size="3" onClick={() => void handleCreateWelcomeDoc()} variant="solid">
+          <Button
+            size="3"
+            onClick={() => void handleCreateWelcomeDoc()}
+            variant="solid"
+          >
             <FilePlusIcon /> Create starter note
           </Button>
           {createError ? (
@@ -173,12 +197,23 @@ export function EditorPane({ theme, onOpenFiles, mobile = false }: EditorPanePro
 
   return (
     <Flex align="center" justify="center" style={{ height: "100%" }} p="4">
-      <Flex direction="column" align="center" gap="3" className="spectrolite-empty-card">
+      <Flex
+        direction="column"
+        align="center"
+        gap="3"
+        className="spectrolite-empty-card"
+      >
         <Text size="2" color="gray" align="center">
-          {mobile ? "Tap the menu icon to pick a file." : "Open a file to start editing."}
+          {mobile
+            ? "Tap the menu icon to pick a file."
+            : "Open a file to start editing."}
         </Text>
         <Flex gap="2">
-          <Button size="3" onClick={onOpenFiles} data-testid="spectrolite-empty-open-files">
+          <Button
+            size="3"
+            onClick={onOpenFiles}
+            data-testid="spectrolite-empty-open-files"
+          >
             <HamburgerMenuIcon /> Open files
           </Button>
           {!mobile ? (

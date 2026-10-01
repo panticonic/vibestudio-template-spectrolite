@@ -155,27 +155,37 @@ export function LiveJsxEditor(props: JsxEditorProps & LiveJsxEditorOwnProps) {
     (mdastNode as unknown as MdastJsxLike).name ??
     descriptor.name ??
     "Fragment";
-  const source = useMemo(() => nodeToMdxSource(mdastNode), [mdastNode]);
+  const serialized = useMemo(() => {
+    try {
+      return { source: nodeToMdxSource(mdastNode), error: null };
+    } catch (error) {
+      return {
+        source: null,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }, [mdastNode]);
+  const source = serialized.source;
   const wrapped = useMemo(
-    () => wrapForSandbox(source, moduleSource),
+    () => wrapForSandbox(source ?? "", moduleSource),
     [source, moduleSource],
   );
   const [Component, setComponent] = useState<ComponentType | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(source);
+  const [draft, setDraft] = useState(source ?? "");
   const [sourceError, setSourceError] = useState<string | null>(null);
   const nativeWikilink = wikilinkValue(mdastNode);
 
   useEffect(() => {
-    if (!editing) setDraft(source);
+    if (!editing && source !== null) setDraft(source);
   }, [editing, source]);
 
   useEffect(() => {
     let cancelled = false;
     setError(null);
     setComponent(null);
-    if (!source.trim()) {
+    if (source === null || !source.trim()) {
       return () => {
         cancelled = true;
       };
@@ -188,14 +198,19 @@ export function LiveJsxEditor(props: JsxEditorProps & LiveJsxEditorOwnProps) {
       loadImport,
       sourcePath: `panels/spectrolite/inline-jsx-${tagName === "*" ? "wild" : tagName}.tsx`,
       imports: compileImports,
-    }).then((result) => {
-      if (cancelled) return;
-      if (result.success && result.Component) {
-        setComponent(() => result.Component as ComponentType);
-      } else {
-        setError(result.error ?? "compile failed");
-      }
-    });
+    })
+      .then((result) => {
+        if (cancelled) return;
+        if (result.success && result.Component) {
+          setComponent(() => result.Component as ComponentType);
+        } else {
+          setError(result.error ?? "compile failed");
+        }
+      })
+      .catch((error) => {
+        if (!cancelled)
+          setError(error instanceof Error ? error.message : String(error));
+      });
     return () => {
       cancelled = true;
     };
@@ -234,6 +249,10 @@ export function LiveJsxEditor(props: JsxEditorProps & LiveJsxEditorOwnProps) {
     }
   };
 
+  if (serialized.error !== null) {
+    return <LiveJsxErrorCard tagName={tagName} error={serialized.error} />;
+  }
+
   if (editing) {
     return (
       <Card className="spectrolite-jsx-source-editor">
@@ -245,7 +264,7 @@ export function LiveJsxEditor(props: JsxEditorProps & LiveJsxEditorOwnProps) {
             onChange={(event) => setDraft(event.target.value)}
           />
           {sourceError ? (
-            <Text size="1" color="red">
+            <Text size="1" color="red" role="alert">
               {sourceError}
             </Text>
           ) : null}

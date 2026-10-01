@@ -81,6 +81,8 @@ export interface SpectroliteState {
 
   // ---- editor ----
   activePath: string | null;
+  navigationError: string | null;
+  navigationPending: boolean;
   recentPaths: string[];
   /** Frontmatter-declared dependencies of the active doc (feeds inline JSX imports). */
   activeDeps: Record<string, string>;
@@ -127,6 +129,8 @@ export function initialState(args: {
     dirtyPaths: [],
 
     activePath: args.openPath,
+    navigationError: null,
+    navigationPending: false,
     recentPaths: args.openPath ? [args.openPath] : [],
     activeDeps: {},
 

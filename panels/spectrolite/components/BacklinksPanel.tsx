@@ -15,7 +15,11 @@ import { useEffect, useState } from "react";
 import { Box, Flex, ScrollArea, Text } from "@radix-ui/themes";
 import { Link2Icon } from "@radix-ui/react-icons";
 import { blobstore } from "@workspace/runtime";
-import { findBacklinks, type Backlink, type BacklinkReader } from "../state/backlinks";
+import {
+  findBacklinks,
+  type Backlink,
+  type BacklinkReader,
+} from "../state/backlinks";
 import { useApp, useAppState } from "../app/context";
 
 function basenameNoExt(path: string): string {
@@ -46,7 +50,9 @@ export function BacklinksPanel({ onOpened }: { onOpened?: () => void }) {
         const text = await blobstore.getText(digest).catch(() => null);
         if (text !== null) return text;
       }
-      const file = await app.semanticVcs?.readFile(mapping.toVcsPath(relPath)).catch(() => null);
+      const file = await app.semanticVcs
+        ?.readFile(mapping.toVcsPath(relPath))
+        .catch(() => null);
       return file && file.content.kind === "text" ? file.content.text : null;
     };
     void findBacklinks(root, activePath, paths, { concurrency: 96, readFile })
@@ -66,7 +72,12 @@ export function BacklinksPanel({ onOpened }: { onOpened?: () => void }) {
 
   if (!activePath) {
     return (
-      <Text size="1" color="gray" as="div" style={{ padding: "var(--space-3)" }}>
+      <Text
+        size="1"
+        color="gray"
+        as="div"
+        style={{ padding: "var(--space-3)" }}
+      >
         Open a file to see its backlinks.
       </Text>
     );
@@ -82,7 +93,12 @@ export function BacklinksPanel({ onOpened }: { onOpened?: () => void }) {
     >
       <Flex align="center" gap="1" px="1">
         <Link2Icon />
-        <Text size="1" weight="bold" color="gray" style={{ letterSpacing: "0.06em" }}>
+        <Text
+          size="1"
+          weight="bold"
+          color="gray"
+          style={{ letterSpacing: "0.06em" }}
+        >
           BACKLINKS
         </Text>
         <Text size="1" color="gray">
@@ -92,12 +108,23 @@ export function BacklinksPanel({ onOpened }: { onOpened?: () => void }) {
       <Box style={{ flex: 1, minHeight: 0 }}>
         <ScrollArea>
           {loading ? (
-            <Text size="1" color="gray" as="div" style={{ padding: "var(--space-2)" }}>
+            <Text
+              size="1"
+              color="gray"
+              as="div"
+              style={{ padding: "var(--space-2)" }}
+            >
               Scanning…
             </Text>
           ) : backlinks.length === 0 ? (
-            <Text size="1" color="gray" as="div" style={{ padding: "var(--space-2)" }}>
-              Nothing links here yet. Reference this note with [[{basenameNoExt(activePath)}]].
+            <Text
+              size="1"
+              color="gray"
+              as="div"
+              style={{ padding: "var(--space-2)" }}
+            >
+              Nothing links here yet. Reference this note with [[
+              {basenameNoExt(activePath)}]].
             </Text>
           ) : (
             <Flex direction="column" gap="1">
@@ -108,13 +135,19 @@ export function BacklinksPanel({ onOpened }: { onOpened?: () => void }) {
                   className="spectrolite-backlink-row"
                   data-testid={`spectrolite-backlink-${bl.fromPath}`}
                   onClick={() => {
-                    app.openFile(bl.fromPath);
-                    onOpened?.();
+                    void app
+                      .openFile(bl.fromPath)
+                      .then(() => onOpened?.())
+                      .catch(() => undefined);
                   }}
                 >
-                  <span className="spectrolite-file-row-name">{bl.fromPath}</span>
+                  <span className="spectrolite-file-row-name">
+                    {bl.fromPath}
+                  </span>
                   {bl.snippet ? (
-                    <span className="spectrolite-backlink-snippet">{bl.snippet}</span>
+                    <span className="spectrolite-backlink-snippet">
+                      {bl.snippet}
+                    </span>
                   ) : null}
                 </button>
               ))}

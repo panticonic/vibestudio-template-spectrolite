@@ -32,23 +32,27 @@ export interface VaultFileSession {
   ): ReturnType<VaultSemanticVcs["createFile"]>;
 }
 
-export interface VaultControllerHooks {
+export interface VaultControllerHooks<Session extends VaultFileSession> {
+  runNavigation(operation: () => Promise<void>): Promise<void>;
   /** Flush the active document before its repository binding is replaced. */
   beforeVaultSwitch(): Promise<void>;
   /** Rebind VCS and publishing within the unchanged panel context. */
-  bindVault(repoRoot: string | null): VaultFileSession | null;
+  prepareVault(repoRoot: string): Session;
+  bindVault(session: Session | null): void;
   /** Notify the session layer (agent scope update / default-agent bootstrap). */
   onVaultSelected(repoRoot: string): void;
 }
 
-export class VaultController {
+export class VaultController<
+  Session extends VaultFileSession = VaultFileSession,
+> {
   private pathsEpoch = 0;
   private readonly pathsRefresh = createQueuedRefresh();
 
   constructor(
     private readonly store: Store<SpectroliteState>,
-    private readonly hooks: VaultControllerHooks,
-    private semanticVcs: VaultFileSession | null = null,
+    private readonly hooks: VaultControllerHooks<Session>,
+    private semanticVcs: Session | null = null,
   ) {}
 
   /** The mapping for the active vault (vault-relative ↔ workspace-relative vcs paths). */
@@ -64,71 +68,67 @@ export class VaultController {
   selectVault(repoRootInput: string): void {
     const repoRoot = normalizeVaultPath(repoRootInput);
     this.store.setState({ vaultError: null, vaultPendingPath: repoRoot });
-    void this.selectVaultInCurrentContext(repoRoot).catch((err) => {
-      this.store.setState({
-        vaultError: `Couldn't open this vault: ${err instanceof Error ? err.message : String(err)}`,
-        vaultPendingPath: null,
+    void this.hooks
+      .runNavigation(() => this.selectVaultInCurrentContext(repoRoot))
+      .catch((err) => {
+        this.store.setState({
+          vaultError: `Couldn't open this vault: ${err instanceof Error ? err.message : String(err)}`,
+          vaultPendingPath: null,
+        });
       });
-    });
   }
 
   private async selectVaultInCurrentContext(repoRoot: string): Promise<void> {
-    this.pathsEpoch += 1;
     const previousRoot = this.store.getState().repoRoot;
     if (previousRoot !== null) await this.hooks.beforeVaultSwitch();
-    const nextSemanticVcs = this.hooks.bindVault(repoRoot);
-    if (!nextSemanticVcs)
-      throw new Error("The panel has no writable semantic workspace context");
-    try {
-      await panel.stateArgs.set({ repoRoot, openPath: null });
-      this.semanticVcs = nextSemanticVcs;
-      this.store.setState({
-        activeDeps: {},
-        activePath: null,
-        dirtyPaths: [],
-        pathContentHashes: {},
-        paths: [],
-        pathsError: null,
-        pathsLoaded: false,
-        pathsLoading: false,
-        pendingSuggestions: [],
-        recentPaths: [],
-        repoRoot,
-        vaultError: null,
-        vaultPendingPath: null,
-      });
-      this.hooks.onVaultSelected(repoRoot);
-      await this.refreshPaths();
-    } catch (err) {
-      this.semanticVcs = this.hooks.bindVault(previousRoot);
-      throw err;
-    }
-  }
-
-  /** Forget the selection so the picker shows in the current semantic context. */
-  async switchVault(): Promise<void> {
+    const nextSemanticVcs = this.hooks.prepareVault(repoRoot);
+    await panel.stateArgs.set({ repoRoot, openPath: null });
     this.pathsEpoch += 1;
-    await this.hooks.beforeVaultSwitch();
+    this.hooks.bindVault(nextSemanticVcs);
+    this.semanticVcs = nextSemanticVcs;
     this.store.setState({
       activeDeps: {},
       activePath: null,
       dirtyPaths: [],
-      paths: [],
       pathContentHashes: {},
+      paths: [],
+      pathsError: null,
       pathsLoaded: false,
       pathsLoading: false,
-      pathsError: null,
+      pendingSuggestions: [],
+      recentPaths: [],
+      repoRoot,
       vaultError: null,
       vaultPendingPath: null,
-      pendingSuggestions: [],
-      repoRoot: null,
     });
-    this.semanticVcs = this.hooks.bindVault(null);
-    await panel.stateArgs
-      .set({ repoRoot: null, openPath: null })
-      .catch((err) => {
-        console.warn("[Spectrolite] couldn't persist vault switch state:", err);
+    this.hooks.onVaultSelected(repoRoot);
+    await this.refreshPaths();
+  }
+
+  /** Forget the selection so the picker shows in the current semantic context. */
+  switchVault(): Promise<void> {
+    return this.hooks.runNavigation(async () => {
+      await this.hooks.beforeVaultSwitch();
+      // Retain the editor, binding and recovery cards if persistence is rejected.
+      await panel.stateArgs.set({ repoRoot: null, openPath: null });
+      this.pathsEpoch += 1;
+      this.hooks.bindVault(null);
+      this.semanticVcs = null;
+      this.store.setState({
+        activeDeps: {},
+        activePath: null,
+        dirtyPaths: [],
+        paths: [],
+        pathContentHashes: {},
+        pathsLoaded: false,
+        pathsLoading: false,
+        pathsError: null,
+        vaultError: null,
+        vaultPendingPath: null,
+        pendingSuggestions: [],
+        repoRoot: null,
       });
+    });
   }
 
   refreshPaths(): Promise<void> {

@@ -35,7 +35,13 @@ export default function SpectrolitePanel() {
 
   useEffect(() => {
     app.start();
-    return () => app.dispose();
+    return () => {
+      void app
+        .dispose()
+        .catch((error) =>
+          console.error("[Spectrolite] final document save failed:", error),
+        );
+    };
   }, [app]);
 
   return (

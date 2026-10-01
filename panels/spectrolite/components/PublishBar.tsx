@@ -1,5 +1,6 @@
 /** Compact status and explicit sync/publish controls for the workspace branch. */
 
+import { OperationNotice } from "@workspace/ui/feedback";
 import { useSyncExternalStore, type ReactNode } from "react";
 import { Button, Flex, Text } from "@radix-ui/themes";
 import { UpdateIcon, UploadIcon } from "@radix-ui/react-icons";
@@ -17,7 +18,7 @@ export function PublishBar({
   const snapshot = useSyncExternalStore(
     (cb) => app.publish.subscribe(cb),
     () => app.publish.getSnapshot(),
-    () => app.publish.getSnapshot()
+    () => app.publish.getSnapshot(),
   );
   const dirtyCount = useAppState((state) => state.dirtyPaths.length);
   const presentation = getPublishPresentation(snapshot, dirtyCount);
@@ -39,34 +40,44 @@ export function PublishBar({
       }}
     >
       <Flex align="center" justify="between" gap="2" style={{ width: "100%" }}>
-        <Flex align="center" gap="2" style={{ flex: "1 1 auto", minWidth: 0, overflow: "hidden" }}>
+        <Flex
+          align="center"
+          gap="2"
+          style={{ flex: "1 1 auto", minWidth: 0, overflow: "hidden" }}
+        >
           <span
             aria-hidden
             style={{
-              color: presentation.hasChanges ? "var(--iris-9)" : "var(--gray-7)",
+              color: presentation.hasChanges
+                ? "var(--iris-9)"
+                : "var(--gray-7)",
               fontSize: 10,
               lineHeight: 1,
             }}
           >
             ●
           </span>
-          <Text size="1" color="gray" truncate data-testid="spectrolite-publish-status">
+          <Text
+            size="1"
+            color="gray"
+            truncate
+            role="status"
+            data-testid="spectrolite-publish-status"
+          >
             {presentation.statusLabel}
           </Text>
-          {snapshot.lastError ? (
-            <Text size="1" color="red" truncate title={snapshot.lastError}>
-              · {snapshot.lastError}
-            </Text>
-          ) : null}
         </Flex>
         <Flex align="center" gap="2" style={{ flex: "0 0 auto", minWidth: 0 }}>
           {trailing}
-          {snapshot.relationship === "behind" || snapshot.relationship === "diverged" ? (
+          {snapshot.relationship === "behind" ||
+          snapshot.relationship === "diverged" ? (
             <Button
               size={mobile ? "2" : "1"}
               variant="soft"
               color="amber"
-              disabled={snapshot.publishing || presentation.syncBlockedByUncommitted}
+              disabled={
+                snapshot.publishing || presentation.syncBlockedByUncommitted
+              }
               onClick={() => void app.publish.sync()}
               data-testid="spectrolite-sync-button"
               title={
@@ -84,17 +95,23 @@ export function PublishBar({
             variant={presentation.hasChanges ? "solid" : "soft"}
             color={presentation.hasChanges ? "iris" : "gray"}
             disabled={
-              !presentation.hasChanges || snapshot.publishing || snapshot.conflicts.length > 0
+              !presentation.hasChanges ||
+              snapshot.publishing ||
+              snapshot.conflicts.length > 0
             }
             onClick={() => void app.publish.publish()}
             data-testid="spectrolite-publish-button"
             title="Publish all committed changes on this workspace branch"
             style={mobile ? { minHeight: 40 } : undefined}
           >
-            <UploadIcon /> {snapshot.publishing ? "Publishing…" : "Publish branch"}
+            <UploadIcon />{" "}
+            {snapshot.publishing ? "Publishing…" : "Publish branch"}
           </Button>
         </Flex>
       </Flex>
+      {snapshot.lastError ? (
+        <OperationNotice intent="error">{snapshot.lastError}</OperationNotice>
+      ) : null}
       {snapshot.conflicts.length > 0 ? (
         <Flex
           direction="column"
@@ -105,12 +122,22 @@ export function PublishBar({
           style={{ width: "100%", borderTop: "1px solid var(--amber-6)" }}
         >
           <Text size="1" color="amber">
-            Published changes conflict with this workspace branch. Review the summaries, edit the document to
-            reconcile them, or explicitly keep the local result.
+            Published changes conflict with this workspace branch. Review the
+            summaries, edit the document to reconcile them, or explicitly keep
+            the local result.
           </Text>
           {snapshot.conflicts.map((conflict) => (
-            <Flex key={`${conflict.coordinate.kind}:${conflict.coordinate.id}`} align="center" justify="between" gap="2">
-              <Text size="1" truncate title={`${conflict.coordinate.kind}: ${conflict.summary}`}>
+            <Flex
+              key={`${conflict.coordinate.kind}:${conflict.coordinate.id}`}
+              align="center"
+              justify="between"
+              gap="2"
+            >
+              <Text
+                size="1"
+                truncate
+                title={`${conflict.coordinate.kind}: ${conflict.summary}`}
+              >
                 {conflict.summary}
               </Text>
               <Button

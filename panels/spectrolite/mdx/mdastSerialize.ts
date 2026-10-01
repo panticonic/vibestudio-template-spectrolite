@@ -20,13 +20,8 @@ const extensions = [mdxJsxToMarkdown()];
 export function nodeToMdxSource(node: unknown): string {
   // toMarkdown accepts a single Node, treating it as a one-node Root.
   // The mdx-jsx extension handles mdxJsxFlowElement and mdxJsxTextElement.
-  try {
-    const rendered = toMarkdown(node as Root, { extensions });
-    return rendered.replace(/\n$/, "");
-  } catch (err) {
-    console.warn("[Spectrolite] nodeToMdxSource failed:", err);
-    return "";
-  }
+  const rendered = toMarkdown(node as Root, { extensions });
+  return rendered.replace(/\n$/, "");
 }
 
 /** Serialize a list of mdast nodes as an MDX fragment (joined by their
@@ -34,10 +29,5 @@ export function nodeToMdxSource(node: unknown): string {
 export function nodesToMdxSource(nodes: RootContent[]): string {
   if (nodes.length === 0) return "";
   const root: Root = { type: "root", children: nodes };
-  try {
-    return toMarkdown(root, { extensions }).replace(/\n$/, "");
-  } catch (err) {
-    console.warn("[Spectrolite] nodesToMdxSource failed:", err);
-    return "";
-  }
+  return toMarkdown(root, { extensions }).replace(/\n$/, "");
 }

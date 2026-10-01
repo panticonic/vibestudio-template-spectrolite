@@ -134,6 +134,61 @@ export class MdxEditorCore implements CoEditEditor {
     this.rebase(this.getCanonical());
   }
 
+  /** Apply a user conflict choice atomically against its exact live block identities. */
+  resolveBlocks(resolution: {
+    oldIds: string[];
+    beforeId: string | null;
+    choice: "accept" | "merge";
+    incomingText: string;
+  }): void {
+    const blocks = this.getBlocks();
+    const current = resolution.oldIds.map((id) =>
+      blocks.find((block) => block.id === id),
+    );
+    if (current.length === 0 || current.some((block) => !block))
+      throw new Error(
+        "The edited blocks have changed. Review the current note before resolving this suggestion.",
+      );
+    const text =
+      resolution.choice === "merge"
+        ? current.map((block) => block!.text).join("\n\n") +
+          "\n\n" +
+          resolution.incomingText
+        : resolution.incomingText;
+    const tree = fromMarkdown(wikilinksToJsx(text), {
+      extensions: this.config.assembled.syntaxExtensions,
+      mdastExtensions: this.config.assembled.mdastExtensions,
+    });
+    this.editor.update(
+      () => {
+        const targets = resolution.oldIds.map((id) => $getNodeByKey(id));
+        if (targets.length === 0 || targets.some((node) => !node?.isAttached()))
+          throw new Error(
+            "The edited blocks have changed. Review the current note before resolving this suggestion.",
+          );
+        const anchor = resolution.beforeId
+          ? $getNodeByKey(resolution.beforeId)
+          : null;
+        if (resolution.beforeId && !anchor?.isAttached())
+          throw new Error(
+            "The suggestion's insertion point is no longer available",
+          );
+        const root = $getRoot();
+        const before = root.getChildrenSize();
+        importMdastTreeToLexical({
+          root,
+          mdastRoot: tree,
+          visitors: this.config.assembled.importVisitors,
+          ...this.descriptors(),
+        });
+        const fresh = root.getChildren().slice(before);
+        for (const node of fresh) if (anchor) anchor.insertBefore(node);
+        for (const target of targets) target!.remove();
+      },
+      { discrete: true },
+    );
+  }
+
   rebase(canonical: string): void {
     this.baseBlocks = splitMdxBlocks(canonical, "base");
   }

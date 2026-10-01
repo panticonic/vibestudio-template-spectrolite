@@ -67,6 +67,7 @@ export function Shell({ theme }: { theme: "light" | "dark" }) {
   const repoRoot = useAppState((s) => s.repoRoot);
   const isMobile = useIsMobile();
   const [quickOpen, setQuickOpen] = useState(false);
+  const navigationError = useAppState((s) => s.navigationError);
   const [actionError, setActionError] = useState<string | null>(null);
 
   // Wikilink bridge for the rendered doc: [[Page]] resolves against the
@@ -83,13 +84,13 @@ export function Shell({ theme }: { theme: "light" | "dark" }) {
           app.store.getState().paths,
         );
         if (resolved) {
-          app.openFile(resolved);
+          await app.openFile(resolved);
           return;
         }
         try {
           setActionError(null);
           const created = await app.vault.createFile(target, `# ${target}\n\n`);
-          app.openFile(created);
+          await app.openFile(created);
         } catch (err) {
           setActionError(
             `Couldn't create “${target}”: ${err instanceof Error ? err.message : String(err)}`,
@@ -131,7 +132,7 @@ export function Shell({ theme }: { theme: "light" | "dark" }) {
               "Untitled",
               "# Untitled\n\n",
             );
-            app.openFile(created);
+            await app.openFile(created);
           } catch (err) {
             setActionError(
               `Couldn't create a new note: ${err instanceof Error ? err.message : String(err)}`,
@@ -148,7 +149,7 @@ export function Shell({ theme }: { theme: "light" | "dark" }) {
 
   return (
     <WikilinkContext.Provider value={wikilinkContext}>
-      {actionError ? (
+      {actionError || navigationError ? (
         <Callout.Root
           color="red"
           role="alert"
@@ -164,13 +165,16 @@ export function Shell({ theme }: { theme: "light" | "dark" }) {
           <Callout.Icon>
             <ExclamationTriangleIcon />
           </Callout.Icon>
-          <Callout.Text>{actionError}</Callout.Text>
+          <Callout.Text>{actionError ?? navigationError}</Callout.Text>
           <IconButton
             size="1"
             variant="ghost"
             color="red"
             aria-label="Dismiss error"
-            onClick={() => setActionError(null)}
+            onClick={() => {
+              setActionError(null);
+              app.store.setState({ navigationError: null });
+            }}
           >
             <Cross2Icon />
           </IconButton>
@@ -275,7 +279,7 @@ function DesktopWorkspace({
             size="1"
             variant="ghost"
             color="gray"
-            onClick={() => void app.vault.switchVault()}
+            onClick={() => void app.vault.switchVault().catch(() => undefined)}
             title={`${repoRoot.replace(/^\//, "")} — switch vault`}
             data-testid="spectrolite-toolbar-switch-vault"
           >

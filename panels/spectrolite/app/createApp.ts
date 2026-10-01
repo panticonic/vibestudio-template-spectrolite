@@ -22,6 +22,7 @@ import {
   type PendingSuggestion,
   type SpectroliteState,
 } from "./state";
+import { NavigationController } from "./navigationController";
 import { SessionController } from "./sessionController";
 import { VaultController } from "./vaultController";
 import { normalizeVaultPath } from "./vaultContext";
@@ -47,7 +48,7 @@ interface PersistedStateArgs {
 export interface SpectroliteApp {
   store: Store<SpectroliteState>;
   session: SessionController;
-  vault: VaultController;
+  vault: VaultController<VaultSemanticVcs>;
   publish: PublishController;
   readonly semanticVcs: VaultSemanticVcs | null;
   viewState: ViewStateStore;
@@ -62,7 +63,7 @@ export interface SpectroliteApp {
   /**
    * Resolve a suggestion card. The active editor (registered by DocumentEditor)
    * applies the chosen text to the live blocks as a normal user edit (which the
-   * DocController then commits); the card is dismissed regardless.
+   * DocController then records). Failed or unavailable application retains the card.
    */
   resolveSuggestion(id: string, resolved: SuggestionResolution | null): void;
   /** DocumentEditor registers how to apply a block resolution to the live doc. */
@@ -84,7 +85,7 @@ export interface SpectroliteApp {
     reason: "local-edit" | "observed" | "commit",
   ): Promise<void>;
   start(): void;
-  dispose(): void;
+  dispose(): Promise<void>;
 }
 
 export type CommitActiveDoc = (
@@ -98,7 +99,8 @@ export type ReloadActiveDoc = () => Promise<void>;
 export interface SuggestionResolution {
   oldIds: string[];
   beforeId: string | null;
-  text: string;
+  choice: "accept" | "merge";
+  incomingText: string;
 }
 
 export type SuggestionApplier = (resolution: SuggestionResolution) => void;
@@ -167,14 +169,10 @@ export function createSpectroliteApp(): SpectroliteApp {
       commitActiveDocFn ? commitActiveDocFn(message) : Promise.resolve(null),
   );
 
-  const bindVault = (nextRepoRoot: string | null): VaultSemanticVcs | null => {
-    semanticVcs =
-      contextId && nextRepoRoot
-        ? new VaultSemanticVcs(contextId, nextRepoRoot)
-        : null;
+  const bindVault = (next: VaultSemanticVcs | null): void => {
+    semanticVcs = next;
     publish.bindSession(semanticVcs);
     lastObservedWorkingState = null;
-    return semanticVcs;
   };
 
   // A panel sandbox used solely to prefetch frontmatter-declared dependencies
@@ -216,13 +214,17 @@ export function createSpectroliteApp(): SpectroliteApp {
 
   const session = new SessionController(store);
 
+  const navigation = new NavigationController(store);
+
   const vault = new VaultController(
     store,
     {
+      runNavigation: (operation) => navigation.run(operation),
       beforeVaultSwitch: async () => {
         if (!store.getState().activePath || !flushActiveDocFn) return;
         await flushActiveDocFn();
       },
+      prepareVault: (root) => new VaultSemanticVcs(contextId, root),
       bindVault,
       onVaultSelected: (repoRoot) => {
         session.onVaultSelected(repoRoot);
@@ -233,51 +235,24 @@ export function createSpectroliteApp(): SpectroliteApp {
     semanticVcs,
   );
 
-  const applyOpenFile = (
-    path: string,
-    extraStateArgs?: Record<string, unknown>,
-  ): void => {
-    if (store.getState().activePath === path) {
-      if (extraStateArgs)
-        void panel.stateArgs.set({ openPath: path, ...extraStateArgs });
-      return;
-    }
-    store.setState((prev) => ({
-      activePath: path,
-      recentPaths: [path, ...prev.recentPaths.filter((p) => p !== path)].slice(
-        0,
-        12,
-      ),
-      // A doc switch clears stale deps; setActiveDocSource re-derives them.
-      activeDeps: {},
-      // Suggestions are per-doc; drop any not for the new doc on open.
-      pendingSuggestions: prev.pendingSuggestions.filter(
-        (s) => s.vcsPath === vault.mapping().toVcsPath(path),
-      ),
-    }));
-    lastDeps = {};
-    void panel.stateArgs.set({ openPath: path, ...(extraStateArgs ?? {}) });
-  };
-  let documentTransition: Promise<void> = Promise.resolve();
   const openFileInternal = (
     path: string,
     extraStateArgs?: Record<string, unknown>,
-  ): Promise<void> => {
-    documentTransition = documentTransition
-      .then(async () => {
-        if (store.getState().activePath !== path) await flushActiveDocFn?.();
-        applyOpenFile(path, extraStateArgs);
-      })
-      .catch((error) => {
-        // The active editor owns the visible save error. Keep it mounted and
-        // keep the queue usable once the user repairs the document.
-        console.warn(
-          "[Spectrolite] navigation paused for an unsaved note:",
-          error,
-        );
-      });
-    return documentTransition;
-  };
+  ): Promise<void> =>
+    navigation.run(async () => {
+      if (store.getState().activePath !== path) await flushActiveDocFn?.();
+      await panel.stateArgs.set({ openPath: path, ...(extraStateArgs ?? {}) });
+      if (store.getState().activePath === path) return;
+      store.setState((prev) => ({
+        activePath: path,
+        recentPaths: [
+          path,
+          ...prev.recentPaths.filter((p) => p !== path),
+        ].slice(0, 12),
+        activeDeps: {},
+      }));
+      lastDeps = {};
+    });
 
   let started = false;
   let startupRefreshTimer: ReturnType<typeof setTimeout> | null = null;
@@ -363,17 +338,19 @@ export function createSpectroliteApp(): SpectroliteApp {
       const suggestion = store
         .getState()
         .pendingSuggestions.find((s) => s.id === id);
-      if (
-        resolved &&
-        suggestion &&
-        suggestion.vcsPath ===
+      if (!suggestion)
+        throw new Error("This suggestion is no longer available");
+      if (resolved) {
+        if (
+          suggestion.vcsPath !==
           vault.mapping().toVcsPath(store.getState().activePath ?? "")
-      ) {
-        try {
-          suggestionApplier?.(resolved);
-        } catch (err) {
-          console.warn("[Spectrolite] applying suggestion failed:", err);
-        }
+        )
+          throw new Error(
+            "Open the note containing this suggestion before resolving it",
+          );
+        if (!suggestionApplier)
+          throw new Error("The note is not ready to apply this suggestion");
+        suggestionApplier(resolved);
       }
       store.setState((prev) => {
         const next = prev.pendingSuggestions.filter((s) => s.id !== id);
@@ -439,12 +416,13 @@ export function createSpectroliteApp(): SpectroliteApp {
       }
       scheduleSemanticWatch();
     },
-    dispose() {
-      void flushActiveDocFn?.().catch((error) => {
-        console.warn("[Spectrolite] final document flush failed:", error);
-      });
+    async dispose() {
+      started = false;
+      // Capture the owning document before React unregisters it. Resource
+      // retirement proceeds even if its final save fails, preserving rejection.
+      const finalSave = flushActiveDocFn?.();
       unsubscribePublication?.();
-      void semanticEvents?.unsubscribeAll();
+      const unsubscribe = semanticEvents?.unsubscribeAll();
       session.dispose();
       if (startupRefreshTimer) {
         clearTimeout(startupRefreshTimer);
@@ -458,6 +436,7 @@ export function createSpectroliteApp(): SpectroliteApp {
       if (g.__spectroliteE2E__ === e2e) {
         delete g.__spectroliteE2E__;
       }
+      await Promise.all([finalSave, unsubscribe]);
     },
   };
   let lastE2EAdd: ReturnType<

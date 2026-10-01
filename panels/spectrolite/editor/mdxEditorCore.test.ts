@@ -27,7 +27,9 @@ export const Counter = () => <Button>Count</Button>;
     core.setCanonical(doc);
 
     const out = core.getCanonical();
-    expect(out).toContain("export const Counter = () => <Button>Count</Button>;");
+    expect(out).toContain(
+      "export const Counter = () => <Button>Count</Button>;",
+    );
     expect(out).toContain("<Counter />");
     expect(out).toContain("title: Counter");
   });
@@ -41,7 +43,7 @@ export const Counter = () => <Button>Count</Button>;
       core
         .getBlocks()
         .map((block) => block.text)
-        .join("\n")
+        .join("\n"),
     ).toContain("[[E2E]]");
   });
 
@@ -65,7 +67,7 @@ export const Counter = () => <Button>Count</Button>;
         const para = $getRoot().getChildren()[1] as ElementNode;
         para.append($createTextNode(" EDITED"));
       },
-      { discrete: true }
+      { discrete: true },
     );
 
     const { canonical, dirty } = core.getDirtyCommit();
@@ -85,7 +87,12 @@ export const Counter = () => <Button>Count</Button>;
     core.setCanonical("# A\n\noriginal\n\ntail");
     const blocks = core.getBlocks();
     const middle = blocks.find((b) => b.text === "original")!;
-    core.applyContained({ kind: "contained", oldId: middle.id, oldIndex: 1, newText: "replaced" });
+    core.applyContained({
+      kind: "contained",
+      oldId: middle.id,
+      oldIndex: 1,
+      newText: "replaced",
+    });
     const out = core.getCanonical();
     expect(out).toContain("replaced");
     expect(out).not.toContain("original");
@@ -151,7 +158,7 @@ export const Counter = () => <Button>Count</Button>;
         const para = $getRoot().getChildren()[1] as ElementNode;
         para.append($createTextNode("!"));
       },
-      { discrete: true }
+      { discrete: true },
     );
     expect(hits).toBeGreaterThan(0);
     off();
@@ -165,8 +172,74 @@ export const Counter = () => <Button>Count</Button>;
       if (tags.has(HISTORIC_TAG)) sawHistoric = true;
     });
     const blocks = core.getBlocks();
-    core.applyContained({ kind: "contained", oldId: blocks[1]!.id, oldIndex: 1, newText: "x" });
+    core.applyContained({
+      kind: "contained",
+      oldId: blocks[1]!.id,
+      oldIndex: 1,
+      newText: "x",
+    });
     expect(sawHistoric).toBe(true);
     off();
   });
+});
+
+it("keeps all text when a conflict choice is malformed or its exact target has disappeared", () => {
+  const core = createMdxEditorCore();
+  core.setCanonical("# Note\n\nMy paragraph\n\nKeep this tail");
+  const original = core.getCanonical();
+  const paragraph = core
+    .getBlocks()
+    .find((block) => block.text === "My paragraph")!;
+  expect(() =>
+    core.resolveBlocks({
+      oldIds: [paragraph.id],
+      beforeId: paragraph.id,
+      choice: "accept",
+      incomingText: "<Broken",
+    }),
+  ).toThrow();
+  expect(core.getCanonical()).toBe(original);
+  expect(() =>
+    core.resolveBlocks({
+      oldIds: ["retired-block"],
+      beforeId: null,
+      choice: "accept",
+      incomingText: "Incoming paragraph",
+    }),
+  ).toThrow(/blocks have changed/);
+  expect(core.getCanonical()).toBe(original);
+  core.resolveBlocks({
+    oldIds: [paragraph.id],
+    beforeId: paragraph.id,
+    choice: "accept",
+    incomingText: "Incoming paragraph",
+  });
+  expect(core.getCanonical()).toContain("Incoming paragraph");
+  expect(core.getCanonical()).toContain("Keep this tail");
+  expect(core.getCanonical()).not.toContain("My paragraph");
+});
+
+it("merges an incoming conflict with the user's current text rather than the collision's old snapshot", () => {
+  const core = createMdxEditorCore();
+  core.setCanonical("# Note\n\nOriginal paragraph");
+  const paragraph = core
+    .getBlocks()
+    .find((block) => block.text === "Original paragraph")!;
+  core.editor.update(
+    () => {
+      const paragraphNode = $getRoot().getChildren()[1] as ElementNode;
+      paragraphNode.append($createTextNode(" with my latest edit"));
+    },
+    { discrete: true },
+  );
+  core.resolveBlocks({
+    oldIds: [paragraph.id],
+    beforeId: paragraph.id,
+    choice: "merge",
+    incomingText: "Incoming paragraph",
+  });
+  expect(core.getCanonical()).toContain(
+    "Original paragraph with my latest edit",
+  );
+  expect(core.getCanonical()).toContain("Incoming paragraph");
 });

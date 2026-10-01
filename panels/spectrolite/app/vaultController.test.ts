@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createStore } from "./store.js";
 import { initialState } from "./state.js";
 import { VaultController, type VaultFileSession } from "./vaultController.js";
@@ -20,6 +20,39 @@ vi.mock("@workspace/runtime", () => ({
 }));
 
 describe("VaultController", () => {
+  beforeEach(() =>
+    runtimeMocks.setStateArgs.mockReset().mockResolvedValue(undefined),
+  );
+  it("retains the selected vault, editor and unresolved work when switching cannot be persisted", async () => {
+    const store = createStore(
+      initialState({
+        contextId: "ctx",
+        channelName: "chat",
+        repoRoot: "notes",
+        openPath: "Original.mdx",
+      }),
+    );
+    store.setState({ dirtyPaths: ["Original.mdx"] });
+    const bind = vi.fn(() => null);
+    const controller = new VaultController(store, {
+      runNavigation: (operation) => operation(),
+      beforeVaultSwitch: async () => undefined,
+      prepareVault: () => {
+        throw new Error("unexpected selection");
+      },
+      bindVault: bind,
+      onVaultSelected: () => undefined,
+    });
+    const failure = new Error("Panel state rejected");
+    runtimeMocks.setStateArgs.mockRejectedValueOnce(failure);
+    await expect(controller.switchVault()).rejects.toBe(failure);
+    expect(store.getState().repoRoot).toBe("notes");
+    expect(store.getState().activePath).toBe("Original.mdx");
+    expect(store.getState().dirtyPaths).toEqual(["Original.mdx"]);
+    expect(bind).not.toHaveBeenCalled();
+    await controller.switchVault();
+    expect(store.getState().repoRoot).toBeNull();
+  });
   it("shows the picker without reopening a second transient panel session", async () => {
     runtimeMocks.reopen.mockClear();
     runtimeMocks.setStateArgs.mockClear();
@@ -42,8 +75,12 @@ describe("VaultController", () => {
     );
     const beforeVaultSwitch = vi.fn(async () => undefined);
     const controller = new VaultController(store, {
+      runNavigation: (operation) => operation(),
       beforeVaultSwitch,
-      bindVault: vi.fn(() => null),
+      prepareVault: () => {
+        throw new Error("unexpected selection");
+      },
+      bindVault: vi.fn(),
       onVaultSelected: vi.fn(),
     });
 
@@ -96,8 +133,10 @@ describe("VaultController", () => {
     const controller = new VaultController(
       store,
       {
+        runNavigation: (operation) => operation(),
         beforeVaultSwitch: vi.fn(async () => undefined),
-        bindVault: vi.fn(() => files),
+        prepareVault: () => files,
+        bindVault: vi.fn(),
         onVaultSelected: vi.fn(),
       },
       files,
@@ -131,7 +170,9 @@ describe("VaultController", () => {
     const onVaultSelected = vi.fn();
     const bindVault = vi.fn(() => files);
     const controller = new VaultController(store, {
+      runNavigation: (operation) => operation(),
       beforeVaultSwitch: vi.fn(async () => undefined),
+      prepareVault: () => files,
       bindVault,
       onVaultSelected,
     });
@@ -143,7 +184,7 @@ describe("VaultController", () => {
 
     expect(store.getState().contextId).toBe("ctx-panel");
     expect(store.getState().repoRoot).toBe("projects/default");
-    expect(bindVault).toHaveBeenCalledWith("projects/default");
+    expect(bindVault).toHaveBeenCalledWith(files);
     expect(runtimeMocks.setStateArgs).toHaveBeenCalledWith({
       repoRoot: "projects/default",
       openPath: null,
@@ -171,8 +212,10 @@ describe("VaultController", () => {
       createFile,
     };
     const controller = new VaultController(store, {
+      runNavigation: (operation) => operation(),
       beforeVaultSwitch: async () => undefined,
-      bindVault: () => files,
+      prepareVault: () => files,
+      bindVault: () => undefined,
       onVaultSelected: () => undefined,
     });
     controller.selectVault("projects/default");

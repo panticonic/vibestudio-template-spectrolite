@@ -7,7 +7,16 @@
  */
 
 import { useSyncExternalStore, type ReactNode } from "react";
-import { Box, Button, Dialog, Flex, Heading, IconButton, Separator, Text } from "@radix-ui/themes";
+import {
+  Box,
+  Button,
+  Dialog,
+  Flex,
+  Heading,
+  IconButton,
+  Separator,
+  Text,
+} from "@radix-ui/themes";
 import { ChevronRightIcon, Cross2Icon } from "@radix-ui/react-icons";
 import { useApp, useAppState } from "../app/context";
 import { FileTree } from "./FileTree";
@@ -92,7 +101,12 @@ export function SidePanel({
             {title}
           </Heading>
           <Dialog.Close>
-            <IconButton size="2" variant="ghost" color="gray" aria-label="Close">
+            <IconButton
+              size="2"
+              variant="ghost"
+              color="gray"
+              aria-label="Close"
+            >
               <Cross2Icon />
             </IconButton>
           </Dialog.Close>
@@ -180,8 +194,10 @@ export function SettingsDrawer({
       <Box style={{ flex: 1, minHeight: 0, overflowY: "auto" }} p="4">
         <WorkspaceSettingsContent
           onSwitchVault={() => {
-            onOpenChange(false);
-            void app.vault.switchVault();
+            void app.vault
+              .switchVault()
+              .then(() => onOpenChange(false))
+              .catch(() => undefined);
           }}
         />
       </Box>
@@ -190,7 +206,11 @@ export function SettingsDrawer({
 }
 
 /** Shared between the desktop settings drawer and the mobile bottom sheet. */
-export function WorkspaceSettingsContent({ onSwitchVault }: { onSwitchVault: () => void }) {
+export function WorkspaceSettingsContent({
+  onSwitchVault,
+}: {
+  onSwitchVault: () => void;
+}) {
   const repoRoot = useAppState((s) => s.repoRoot);
   const rosterCount = useAppState((s) => s.roster.length);
   if (!repoRoot) return null;
@@ -202,10 +222,18 @@ export function WorkspaceSettingsContent({ onSwitchVault }: { onSwitchVault: () 
           variant="soft"
           color="gray"
           onClick={onSwitchVault}
-          style={{ justifyContent: "space-between", width: "100%", minHeight: 48 }}
+          style={{
+            justifyContent: "space-between",
+            width: "100%",
+            minHeight: 48,
+          }}
           data-testid="spectrolite-settings-switch-vault"
         >
-          <Flex direction="column" align="start" style={{ flex: 1, textAlign: "left" }}>
+          <Flex
+            direction="column"
+            align="start"
+            style={{ flex: 1, textAlign: "left" }}
+          >
             <Text size="2" weight="medium">
               {repoRoot.replace(/^\//, "")}
             </Text>
@@ -237,25 +265,35 @@ function PublishSummary() {
   const snapshot = useSyncExternalStore(
     (cb) => app.publish.subscribe(cb),
     () => app.publish.getSnapshot(),
-    () => app.publish.getSnapshot()
+    () => app.publish.getSnapshot(),
   );
   const dirtyCount = useAppState((s) => s.dirtyPaths.length);
   const presentation = getPublishPresentation(snapshot, dirtyCount);
   return (
-    <Flex align="center" gap="2" justify="between" data-testid="spectrolite-vcs-state">
+    <Flex
+      align="center"
+      gap="2"
+      justify="between"
+      data-testid="spectrolite-vcs-state"
+    >
       <Flex direction="column">
         <Text size="2" weight="medium">
           {presentation.statusLabel}
         </Text>
         <Text size="1" color="gray">
-          Publishes the full workspace branch; the selected vault is only the editing focus.
+          Publishes the full workspace branch; the selected vault is only the
+          editing focus.
         </Text>
       </Flex>
       <Button
         size="2"
         variant={presentation.hasChanges ? "solid" : "soft"}
         color={presentation.hasChanges ? "iris" : "gray"}
-        disabled={!presentation.hasChanges || snapshot.publishing || presentation.publishBlocked}
+        disabled={
+          !presentation.hasChanges ||
+          snapshot.publishing ||
+          presentation.publishBlocked
+        }
         onClick={() => void app.publish.publish()}
         data-testid="spectrolite-settings-publish"
       >

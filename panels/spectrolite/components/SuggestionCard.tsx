@@ -12,10 +12,11 @@
  * editor; dismissing leaves the user's text + caret intact.
  */
 
-import { useMemo } from "react";
+import { OperationNotice } from "@workspace/ui/feedback";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Box, Button, Card, Flex, Text } from "@radix-ui/themes";
 import { CheckIcon, Cross2Icon, MixIcon } from "@radix-ui/react-icons";
-import { computeBlockDiff, resolveSuggestion } from "../coedit/blockDiff";
+import { computeBlockDiff } from "../coedit/blockDiff";
 import type { Collision } from "../coedit/blockReconcile";
 import { useApp, useAppState } from "../app/context";
 import type { SuggestionResolution } from "../app/createApp";
@@ -31,7 +32,7 @@ function scribeText(collision: Collision): string {
 function DiffView({ collision }: { collision: Collision }) {
   const segments = useMemo(
     () => computeBlockDiff(userText(collision), scribeText(collision)),
-    [collision]
+    [collision],
   );
   return (
     <Box
@@ -71,19 +72,37 @@ function DiffView({ collision }: { collision: Collision }) {
   );
 }
 
-function SuggestionRow({ id, collision }: { id: string; collision: Collision }) {
+function SuggestionRow({
+  id,
+  collision,
+  onResolved,
+}: {
+  id: string;
+  collision: Collision;
+  onResolved: (id: string) => void;
+}) {
   const app = useApp();
+  const [error, setError] = useState<string | null>(null);
 
   const resolve = (choice: "accept" | "keep" | "merge") => {
-    const text = resolveSuggestion(choice, userText(collision), scribeText(collision));
+    // Keeping mine dismisses the incoming proposal without replaying an old
+    // snapshot over whatever the user has typed since the collision.
+
     // The live blocks are `liveIds`; anchor the replacement before the first
     // block after the run (the next live id is its own anchor on removal).
     const resolution: SuggestionResolution = {
       oldIds: collision.oldIds,
       beforeId: collision.oldIds[0] ?? null,
-      text,
+      choice: choice === "merge" ? "merge" : "accept",
+      incomingText: scribeText(collision),
     };
-    app.resolveSuggestion(id, resolution);
+    try {
+      app.resolveSuggestion(id, choice === "keep" ? null : resolution);
+      onResolved(id);
+      setError(null);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : String(error));
+    }
   };
 
   return (
@@ -109,6 +128,9 @@ function SuggestionRow({ id, collision }: { id: string; collision: Collision }) 
           </Button>
         </Flex>
         <DiffView collision={collision} />
+        {error ? (
+          <OperationNotice intent="error">{error}</OperationNotice>
+        ) : null}
         <Flex gap="2">
           <Button
             size="1"
@@ -138,11 +160,39 @@ export function SuggestionStack() {
   const suggestions = useAppState((s) => s.pendingSuggestions);
   const activePath = useAppState((s) => s.activePath);
   const app = useApp();
-  const activeVcsPath = activePath ? app.vault.mapping().toVcsPath(activePath) : null;
+  const activeVcsPath = activePath
+    ? app.vault.mapping().toVcsPath(activePath)
+    : null;
   const visible = suggestions.filter((s) => s.vcsPath === activeVcsPath);
+  const stack = useRef<HTMLDivElement>(null);
+  const resolvedFocus = useRef<{
+    id: string;
+    editor: HTMLElement | null;
+  } | null>(null);
+  useLayoutEffect(() => {
+    const pending = resolvedFocus.current;
+    if (!pending || visible.some((s) => s.id === pending.id)) return;
+    resolvedFocus.current = null;
+    // Only repair focus lost when an explicitly resolved card was removed.
+    if (document.activeElement !== document.body) return;
+    const next = stack.current?.querySelector<HTMLButtonElement>("button");
+    if (next) next.focus();
+    else if (pending.editor?.isConnected) pending.editor.focus();
+  }, [visible]);
+  const onResolved = (id: string) => {
+    if (!stack.current?.contains(document.activeElement)) return;
+    resolvedFocus.current = {
+      id,
+      editor:
+        stack.current.parentElement?.querySelector<HTMLElement>(
+          '[contenteditable="true"]',
+        ) ?? null,
+    };
+  };
   if (visible.length === 0) return null;
   return (
     <Box
+      ref={stack}
       className="spectrolite-suggestion-stack"
       data-testid="spectrolite-suggestion-stack"
       style={{
@@ -158,7 +208,12 @@ export function SuggestionStack() {
       }}
     >
       {visible.map((s) => (
-        <SuggestionRow key={s.id} id={s.id} collision={s.collision} />
+        <SuggestionRow
+          key={s.id}
+          id={s.id}
+          collision={s.collision}
+          onResolved={onResolved}
+        />
       ))}
     </Box>
   );

@@ -27,7 +27,10 @@ import {
   REDO_COMMAND,
   UNDO_COMMAND,
 } from "lexical";
-import { DescriptorProvider, type JsxComponentDescriptor } from "@workspace/mdx-editor-core";
+import {
+  DescriptorProvider,
+  type JsxComponentDescriptor,
+} from "@workspace/mdx-editor-core";
 
 import { FrontmatterEditor } from "../components/FrontmatterEditor.js";
 import { MdxEditorCore } from "./mdxEditorCore.js";
@@ -70,7 +73,7 @@ function EditorBridge({
         canUndo = payload;
         return false;
       },
-      COMMAND_PRIORITY_LOW
+      COMMAND_PRIORITY_LOW,
     );
     const offCanRedo = editor.registerCommand(
       CAN_REDO_COMMAND,
@@ -78,7 +81,7 @@ function EditorBridge({
         canRedo = payload;
         return false;
       },
-      COMMAND_PRIORITY_LOW
+      COMMAND_PRIORITY_LOW,
     );
     const undoHandle: LexicalUndoHandle = {
       canUndo: () => canUndo,
@@ -109,25 +112,28 @@ export function MdxLexicalEditor({
       nodes: config.assembled.lexicalNodes,
       editable: !readOnly,
       onError: (error: Error) => {
-        console.error("[spectrolite/lexical]", error);
+        throw error;
       },
       theme: {},
     }),
-    [config, readOnly]
+    [config, readOnly],
   );
 
   return (
     <LexicalComposer initialConfig={initialConfig}>
       <DescriptorProvider
         value={{
-          jsxComponentDescriptors: config.jsxComponentDescriptors as JsxComponentDescriptor[],
+          jsxComponentDescriptors:
+            config.jsxComponentDescriptors as JsxComponentDescriptor[],
           codeBlockLanguages: {},
           defaultCodeBlockLanguage: "tsx",
           frontmatterEditor: FrontmatterEditor,
         }}
       >
         <RichTextPlugin
-          contentEditable={<ContentEditable className={className} aria-label={ariaLabel} />}
+          contentEditable={
+            <ContentEditable className={className} aria-label={ariaLabel} />
+          }
           placeholder={null}
           ErrorBoundary={LexicalErrorBoundary}
         />

@@ -7,8 +7,15 @@
  * or transport actor labels through the editor.
  */
 
-import type { VcsReadFileResult, VcsStateNodeRef } from "@vibestudio/service-schemas/vcs";
-import { reconcileBlocks, type Block, type Collision } from "./blockReconcile.js";
+import type {
+  VcsReadFileResult,
+  VcsStateNodeRef,
+} from "@vibestudio/service-schemas/vcs";
+import {
+  reconcileBlocks,
+  type Block,
+  type Collision,
+} from "./blockReconcile.js";
 import { buildEditOps, type ReplaceEditOp } from "./commitEdits.js";
 
 export interface EditorBlock {
@@ -59,10 +66,13 @@ export interface SemanticEditResult {
 
 export interface DocVcs {
   readFile(path: string, state?: VcsStateNodeRef): Promise<VcsReadFileResult>;
-  edit(edits: ReplaceEditOp[], expectedWorkingHead?: VcsStateNodeRef): Promise<SemanticEditResult>;
+  edit(
+    edits: ReplaceEditOp[],
+    expectedWorkingHead?: VcsStateNodeRef,
+  ): Promise<SemanticEditResult>;
   commit(
     message: string | null,
-    expectedWorkingHead?: VcsStateNodeRef
+    expectedWorkingHead?: VcsStateNodeRef,
   ): Promise<{ event: { kind: "event"; eventId: string } } | null>;
   refresh(): Promise<{ status: { workingHead: VcsStateNodeRef } }>;
 }
@@ -80,9 +90,13 @@ export interface DocControllerDeps {
   onDirtyChange?(vcsPath: string, dirty: boolean): void;
   onWorkingStateChange?(
     vcsPath: string,
-    reason: "local-edit" | "observed" | "commit"
+    reason: "local-edit" | "observed" | "commit",
   ): void | Promise<void>;
-  onUnavailable?(vcsPath: string, reason: "missing" | "unreadable", error?: unknown): void;
+  onUnavailable?(
+    vcsPath: string,
+    reason: "missing" | "unreadable",
+    error?: unknown,
+  ): void;
   onAvailabilityRestored?(vcsPath: string): void;
   undo?: UndoSink;
   editDebounceMs?: number;
@@ -111,7 +125,11 @@ export class DocController {
   private editAgain = false;
   private editAgainForce = false;
   private lastSaveError: unknown = null;
+  private editRevision = 0;
+  private savedEditRevision = 0;
   private disposed = false;
+  private disposal: Promise<void> | null = null;
+  private observationPromise: Promise<void> | null = null;
   private offUserEdit: (() => void) | null = null;
 
   editCount = 0;
@@ -139,21 +157,31 @@ export class DocController {
     this.offUserEdit?.();
     this.vcsPath = vcsPath;
     const revision = await this.deps.vcs.refresh();
-    const file = await this.deps.vcs.readFile(vcsPath, revision.status.workingHead);
+    const file = await this.deps.vcs.readFile(
+      vcsPath,
+      revision.status.workingHead,
+    );
+    if (this.disposed) throw new Error("This note's editor was closed");
     if (!file) throw new Error(`Document no longer exists: ${vcsPath}`);
-    if (file.content.kind !== "text") throw new Error(`Document is not editable text: ${vcsPath}`);
+    if (file.content.kind !== "text")
+      throw new Error(`Document is not editable text: ${vcsPath}`);
     const original = file.content.text;
     this.baseState = revision.status.workingHead;
 
     this.deps.editor.setCanonical(original);
     this.baseText = original;
+    this.savedEditRevision = this.editRevision;
     this.offUserEdit = this.deps.editor.onUserEdit(() => this.scheduleEdit());
     this.emitDirty();
     this.scheduleObservation();
   }
 
   isDirty(): boolean {
-    return this.vcsPath !== null && this.deps.editor.getCanonical() !== this.baseText;
+    return (
+      this.vcsPath !== null &&
+      this.editRevision !== this.savedEditRevision &&
+      this.deps.editor.getCanonical() !== this.baseText
+    );
   }
 
   private emitDirty(): void {
@@ -161,17 +189,22 @@ export class DocController {
   }
 
   private setTimer(fn: () => void, delay: number): unknown {
-    return (this.deps.setTimer ?? ((callback, ms) => setTimeout(callback, ms)))(fn, delay);
+    return (this.deps.setTimer ?? ((callback, ms) => setTimeout(callback, ms)))(
+      fn,
+      delay,
+    );
   }
 
   private clearTimer(handle: unknown): void {
-    (this.deps.clearTimer ?? ((value) => clearTimeout(value as ReturnType<typeof setTimeout>)))(
-      handle
-    );
+    (
+      this.deps.clearTimer ??
+      ((value) => clearTimeout(value as ReturnType<typeof setTimeout>))
+    )(handle);
   }
 
   private scheduleEdit(): void {
     if (this.disposed) return;
+    this.editRevision += 1;
     if (this.editTimer !== null) this.clearTimer(this.editTimer);
     this.editTimer = this.setTimer(() => {
       this.editTimer = null;
@@ -213,6 +246,11 @@ export class DocController {
 
   private async recordEditOnce(force: boolean): Promise<void> {
     if ((this.disposed && !force) || !this.vcsPath) return;
+    // Loading/observing source may normalize its editor representation. Only
+    // authored editor revisions belong to the save owner; opening a note does
+    // not author a formatting change, including during final disposal.
+    const revision = this.editRevision;
+    if (revision === this.savedEditRevision) return;
     try {
       // Canonicalization includes a full MDX parse. Keep syntax errors inside
       // the normal unsaved-error path rather than letting a timer rejection
@@ -225,15 +263,20 @@ export class DocController {
         dirtyBlocks: dirty,
       });
       if (!built.changed) {
+        this.savedEditRevision = revision;
         this.lastSaveError = null;
         return this.emitDirty();
       }
       this.editCount += 1;
       if (built.usedFallback) this.fallbackCount += 1;
-      const result = await this.deps.vcs.edit(built.edits, this.baseState ?? undefined);
+      const result = await this.deps.vcs.edit(
+        built.edits,
+        this.baseState ?? undefined,
+      );
       this.baseState = result.workingHead;
       result.changeIds.forEach((id) => this.authoredChangeIds.add(id));
       this.baseText = canonical;
+      this.savedEditRevision = revision;
       this.deps.editor.rebase(canonical);
       await this.deps.onWorkingStateChange?.(this.vcsPath, "local-edit");
       this.lastSaveError = null;
@@ -245,7 +288,9 @@ export class DocController {
     this.emitDirty();
   }
 
-  async commitNow(message: string): Promise<{ eventId: string; changed: boolean } | null> {
+  async commitNow(
+    message: string,
+  ): Promise<{ eventId: string; changed: boolean } | null> {
     if (this.disposed || !this.vcsPath || !this.baseState) return null;
     if (this.editTimer !== null) {
       this.clearTimer(this.editTimer);
@@ -253,7 +298,8 @@ export class DocController {
     }
     await this.recordEdit();
     if (this.lastSaveError) throw this.saveFailure();
-    if (this.authoredChangeIds.size === 0) return { eventId: "", changed: false };
+    if (this.authoredChangeIds.size === 0)
+      return { eventId: "", changed: false };
     const result = await this.deps.vcs.commit(message, this.baseState);
     if (!result) return { eventId: "", changed: false };
     const sealed = [...this.authoredChangeIds];
@@ -280,15 +326,39 @@ export class DocController {
       this.lastSaveError instanceof Error
         ? this.lastSaveError.message
         : String(this.lastSaveError ?? "unknown error");
-    return new Error(`Cannot leave or publish this note until it is saved: ${detail}`);
+    return new Error(
+      `Cannot leave or publish this note until it is saved: ${detail}`,
+      { cause: this.lastSaveError },
+    );
   }
 
-  private async observeRemote(): Promise<void> {
+  private observeRemote(): Promise<void> {
+    if (this.disposed) return Promise.resolve();
+    if (this.observationPromise) return this.observationPromise;
+    this.observationPromise = this.observeRemoteOnce().finally(() => {
+      this.observationPromise = null;
+    });
+    return this.observationPromise;
+  }
+
+  private async observeRemoteOnce(): Promise<void> {
     if (this.disposed || !this.vcsPath || !this.baseState) return;
+    const observedBase = this.baseState;
+    const observedPath = this.vcsPath;
     try {
       const current = await this.deps.vcs.refresh();
+      if (this.disposed || !sameState(observedBase, this.baseState)) return;
       if (sameState(current.status.workingHead, this.baseState)) return;
-      const file = await this.deps.vcs.readFile(this.vcsPath, current.status.workingHead);
+      const file = await this.deps.vcs.readFile(
+        this.vcsPath,
+        current.status.workingHead,
+      );
+      if (
+        this.disposed ||
+        this.vcsPath !== observedPath ||
+        !sameState(observedBase, this.baseState)
+      )
+        return;
       if (!file) {
         this.deps.onUnavailable?.(this.vcsPath, "missing");
         return;
@@ -312,6 +382,7 @@ export class DocController {
       this.applyIncoming(current.status.workingHead, file.content.text);
       await this.deps.onWorkingStateChange?.(this.vcsPath, "observed");
     } catch (error) {
+      if (this.disposed) return;
       this.deps.onUnavailable?.(this.vcsPath, "unreadable", error);
       if (this.vcsPath) this.deps.onSaveError?.(this.vcsPath, error);
     }
@@ -322,7 +393,7 @@ export class DocController {
     const { ops, collisions } = reconcileBlocks(
       this.deps.editor.getBlocks() as Block[],
       this.deps.splitBlocks(incomingText),
-      this.deps.editor.getLiveBlockIds()
+      this.deps.editor.getLiveBlockIds(),
     );
     for (const op of ops) {
       if (op.kind === "contained") this.deps.editor.applyContained(op);
@@ -335,7 +406,11 @@ export class DocController {
     this.emitDirty();
   }
 
-  dispose(): void {
+  /** Retire listeners immediately, then join the last owned save. Callers can
+   * observe its original failure; disposal never labels an unsaved note saved. */
+  dispose(): Promise<void> {
+    if (this.disposal) return this.disposal;
+    this.disposed = true;
     if (this.editTimer !== null) {
       this.clearTimer(this.editTimer);
       this.editTimer = null;
@@ -344,11 +419,14 @@ export class DocController {
       this.clearTimer(this.observationTimer);
       this.observationTimer = null;
     }
-    void this.recordEdit(true).catch((error) => {
-      if (this.vcsPath) this.deps.onSaveError?.(this.vcsPath, error);
-    });
-    this.disposed = true;
     this.offUserEdit?.();
     this.offUserEdit = null;
+    this.disposal = Promise.all([
+      this.observationPromise,
+      this.recordEdit(true),
+    ]).then(() => {
+      if (this.lastSaveError) throw this.lastSaveError;
+    });
+    return this.disposal;
   }
 }

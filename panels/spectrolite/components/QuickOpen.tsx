@@ -91,22 +91,28 @@ export function QuickOpenDialog({
     return out;
   }, [results, query, canCreate, createName, section]);
 
+  const [error, setError] = useState<string | null>(null);
   const run = (action: QuickAction) => {
-    if (action.kind === "open") {
-      app.openFile(action.path);
-      onOpenChange(false);
-      return;
-    }
     void (async () => {
-      const title =
-        action.name
-          .replace(/\.mdx$/i, "")
-          .split("/")
-          .pop() ?? action.name;
-      const created = await app.vault.createFile(action.name, `# ${title}\n\n`);
-      app.openFile(created);
+      setError(null);
+      if (action.kind === "open") {
+        await app.openFile(action.path);
+      } else {
+        const title =
+          action.name
+            .replace(/\.mdx$/i, "")
+            .split("/")
+            .pop() ?? action.name;
+        const created = await app.vault.createFile(
+          action.name,
+          `# ${title}\n\n`,
+        );
+        await app.openFile(created);
+      }
       onOpenChange(false);
-    })();
+    })().catch((error) =>
+      setError(error instanceof Error ? error.message : String(error)),
+    );
   };
 
   return (
@@ -120,6 +126,7 @@ export function QuickOpenDialog({
       placeholder="Find or create a note"
       searchIcon={<MagnifyingGlassIcon />}
       maxWidth={560}
+      footer={error ? <span role="alert">{error}</span> : undefined}
       emptyMessage={
         pathsError
           ? pathsError

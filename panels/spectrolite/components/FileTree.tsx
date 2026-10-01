@@ -8,8 +8,21 @@
  */
 
 import { useCallback, useState } from "react";
-import { Box, Callout, Flex, IconButton, ScrollArea, Text, TextField } from "@radix-ui/themes";
-import { FileTextIcon, PlusIcon, ReloadIcon, ExclamationTriangleIcon } from "@radix-ui/react-icons";
+import {
+  Box,
+  Callout,
+  Flex,
+  IconButton,
+  ScrollArea,
+  Text,
+  TextField,
+} from "@radix-ui/themes";
+import {
+  FileTextIcon,
+  PlusIcon,
+  ReloadIcon,
+  ExclamationTriangleIcon,
+} from "@radix-ui/react-icons";
 import { useApp, useAppState } from "../app/context";
 
 export interface FileTreeProps {
@@ -35,10 +48,12 @@ export function FileTree({ onOpened }: FileTreeProps) {
 
   const open = useCallback(
     (path: string) => {
-      app.openFile(path);
-      onOpened?.();
+      void app
+        .openFile(path)
+        .then(() => onOpened?.())
+        .catch(() => undefined);
     },
-    [app, onOpened]
+    [app, onOpened],
   );
 
   const handleCreate = useCallback(async () => {
@@ -46,7 +61,10 @@ export function FileTree({ onOpened }: FileTreeProps) {
     if (!trimmed) return;
     setCreateError(null);
     try {
-      const created = await app.vault.createFile(trimmed, `# ${trimmed.replace(/\.mdx$/, "")}\n\n`);
+      const created = await app.vault.createFile(
+        trimmed,
+        `# ${trimmed.replace(/\.mdx$/, "")}\n\n`,
+      );
       setNewName("");
       open(created);
     } catch (err) {
@@ -62,7 +80,12 @@ export function FileTree({ onOpened }: FileTreeProps) {
       style={{ height: "100%", padding: "var(--space-2)" }}
     >
       <Flex align="center" justify="between" gap="2" px="1">
-        <Text size="1" weight="bold" color="gray" style={{ letterSpacing: "0.06em" }}>
+        <Text
+          size="1"
+          weight="bold"
+          color="gray"
+          style={{ letterSpacing: "0.06em" }}
+        >
           FILES
         </Text>
         <IconButton
@@ -110,7 +133,12 @@ export function FileTree({ onOpened }: FileTreeProps) {
       <Box style={{ flex: 1, minHeight: 0 }}>
         <ScrollArea>
           {loading ? (
-            <Text size="1" color="gray" as="div" style={{ padding: "var(--space-2)" }}>
+            <Text
+              size="1"
+              color="gray"
+              as="div"
+              style={{ padding: "var(--space-2)" }}
+            >
               Loading…
             </Text>
           ) : pathsError ? (
@@ -120,13 +148,21 @@ export function FileTree({ onOpened }: FileTreeProps) {
               </Callout.Icon>
               <Callout.Text size="1">
                 {pathsError}
-                <button type="button" onClick={() => void app.vault.refreshPaths()}>
+                <button
+                  type="button"
+                  onClick={() => void app.vault.refreshPaths()}
+                >
                   Retry
                 </button>
               </Callout.Text>
             </Callout.Root>
           ) : files.length === 0 ? (
-            <Text size="1" color="gray" as="div" style={{ padding: "var(--space-2)" }}>
+            <Text
+              size="1"
+              color="gray"
+              as="div"
+              style={{ padding: "var(--space-2)" }}
+            >
               No .mdx files yet
             </Text>
           ) : (
@@ -159,7 +195,9 @@ export function FileTree({ onOpened }: FileTreeProps) {
                         ●
                       </span>
                     ) : null}
-                    {dir ? <span className="spectrolite-file-row-dir">{dir}</span> : null}
+                    {dir ? (
+                      <span className="spectrolite-file-row-dir">{dir}</span>
+                    ) : null}
                   </button>
                 );
               })}
