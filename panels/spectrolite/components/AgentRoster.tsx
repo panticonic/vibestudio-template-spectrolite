@@ -6,7 +6,15 @@
  */
 
 import { useMemo, useState } from "react";
-import { Badge, Button, DropdownMenu, Flex, IconButton, Text, Tooltip } from "@radix-ui/themes";
+import {
+  Badge,
+  Button,
+  DropdownMenu,
+  Flex,
+  IconButton,
+  Text,
+  Tooltip,
+} from "@radix-ui/themes";
 import { PersonIcon, PlusIcon, Cross2Icon } from "@radix-ui/react-icons";
 import { useIsMobile } from "@workspace/react";
 import { useApp, useAppState } from "../app/context";
@@ -17,7 +25,7 @@ export function useVisibleRoster(): RosterAgent[] {
   const removedHandles = useAppState((s) => s.removedHandles);
   return useMemo(
     () => roster.filter((agent) => !removedHandles.includes(agent.handle)),
-    [roster, removedHandles]
+    [roster, removedHandles],
   );
 }
 
@@ -28,8 +36,15 @@ export function AgentBadges() {
   return (
     <Flex align="center" gap="1">
       {agents.map((agent) => (
-        <Tooltip key={agent.handle} content={`@${agent.handle} is in the channel`}>
-          <Badge variant="soft" color="iris" data-testid={`spectrolite-agent-${agent.handle}`}>
+        <Tooltip
+          key={agent.handle}
+          content={`@${agent.handle} is in the channel`}
+        >
+          <Badge
+            variant="soft"
+            color="iris"
+            data-testid={`spectrolite-agent-${agent.handle}`}
+          >
             <PersonIcon width="10" height="10" /> {agent.handle}
           </Badge>
         </Tooltip>
@@ -41,8 +56,26 @@ export function AgentBadges() {
 export function AgentRoster() {
   const app = useApp();
   const isMobile = useIsMobile();
-  const agents = useVisibleRoster();
+  const liveAgents = useVisibleRoster();
+  const installedAgents = useAppState((s) => s.installedAgents);
+  // Keep owned assistants manageable even when launch or removal fails before
+  // roster delivery. The roster alone cannot establish ownership or absence.
+  const agents = useMemo(
+    () =>
+      (installedAgents ?? []).map(
+        (record) =>
+          liveAgents.find((agent) => agent.handle === record.handle) ?? {
+            handle: record.handle,
+            status: "pending" as const,
+          },
+      ),
+    [installedAgents, liveAgents],
+  );
   const availableAgents = useAppState((s) => s.availableAgents);
+  const availableAgentsError = useAppState((s) => s.availableAgentsError);
+  const connectionStatus = useAppState((s) => s.connectionStatus);
+  const agentsStatus = useAppState((s) => s.agentsStatus);
+  const agentsError = useAppState((s) => s.agentsError);
   const [busy, setBusy] = useState(false);
   const [operationError, setOperationError] = useState<string | null>(null);
 
@@ -76,7 +109,7 @@ export function AgentRoster() {
     <Flex direction="column" gap="2">
       {agents.length === 0 ? (
         <Text size="1" color="gray">
-          No agents in the channel yet.
+          No resident assistants selected.
         </Text>
       ) : (
         agents.map((agent) => (
@@ -98,7 +131,11 @@ export function AgentRoster() {
               <Text size="2" weight="medium">
                 @{agent.handle}
               </Text>
-              <Badge size="1" color={agent.status === "live" ? "grass" : "gray"} variant="soft">
+              <Badge
+                size="1"
+                color={agent.status === "live" ? "grass" : "gray"}
+                variant="soft"
+              >
                 {agent.status}
               </Badge>
             </Flex>
@@ -106,7 +143,11 @@ export function AgentRoster() {
               size="2"
               variant="ghost"
               color="gray"
-              disabled={busy}
+              disabled={
+                busy ||
+                connectionStatus !== "ready" ||
+                agentsStatus === "starting"
+              }
               onClick={() => void remove(agent.handle)}
               aria-label={`Remove @${agent.handle}`}
               data-testid={`spectrolite-agent-remove-${agent.handle}`}
@@ -122,7 +163,13 @@ export function AgentRoster() {
           <Button
             size={isMobile ? "3" : "2"}
             variant="soft"
-            disabled={busy || availableAgents.length === 0}
+            disabled={
+              busy ||
+              connectionStatus !== "ready" ||
+              agentsStatus === "starting" ||
+              agentsStatus === "error" ||
+              availableAgents.length === 0
+            }
             style={{ minHeight: isMobile ? 48 : undefined }}
             data-testid="spectrolite-agent-add-trigger"
           >
@@ -131,7 +178,9 @@ export function AgentRoster() {
         </DropdownMenu.Trigger>
         <DropdownMenu.Content>
           {availableAgents.length === 0 ? (
-            <DropdownMenu.Item disabled>(no agents available)</DropdownMenu.Item>
+            <DropdownMenu.Item disabled>
+              (no agents available)
+            </DropdownMenu.Item>
           ) : (
             availableAgents.map((a) => (
               <DropdownMenu.Item
@@ -148,8 +197,41 @@ export function AgentRoster() {
           )}
         </DropdownMenu.Content>
       </DropdownMenu.Root>
+      {availableAgentsError ? (
+        <Flex direction="column" gap="2">
+          <Text size="1" color="red" role="alert">
+            {availableAgentsError}
+          </Text>
+          <Button
+            size="1"
+            variant="soft"
+            onClick={() => void app.session.refreshAvailableAgents()}
+          >
+            Refresh agent list
+          </Button>
+        </Flex>
+      ) : null}
+      {agentsStatus === "error" ? (
+        <Flex direction="column" gap="2">
+          <Text size="1" color="red" role="alert">
+            {agentsError}
+          </Text>
+          <Button
+            size="1"
+            variant="soft"
+            onClick={() => void app.session.retryAgents()}
+          >
+            Retry assistant setup
+          </Button>
+        </Flex>
+      ) : null}
       {operationError ? (
-        <Text size="1" color="red" role="alert" data-testid="spectrolite-agent-error">
+        <Text
+          size="1"
+          color="red"
+          role="alert"
+          data-testid="spectrolite-agent-error"
+        >
           {operationError}
         </Text>
       ) : null}

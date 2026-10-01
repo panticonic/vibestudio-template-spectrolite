@@ -142,7 +142,7 @@ export function createSpectroliteApp(): SpectroliteApp {
       channelName: args.channelName ?? null,
       repoRoot,
       openPath: args.openPath ?? null,
-      installedAgents: args.installedAgents ?? [],
+      installedAgents: args.installedAgents,
     }),
   );
 
@@ -487,7 +487,7 @@ export function createSpectroliteApp(): SpectroliteApp {
         })),
         channelName: state.channelName,
         contextId: state.contextId,
-        installedAgents: state.installedAgents.map((agent) => ({
+        installedAgents: (state.installedAgents ?? []).map((agent) => ({
           handle: agent.handle,
           className: agent.className,
           key: agent.key,

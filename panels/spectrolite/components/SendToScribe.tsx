@@ -39,12 +39,14 @@ export function SendToScribe({
   const activePath = useAppState((s) => s.activePath);
   const recipient = useAppState(
     (s) =>
-      s.roster.find((agent) => agent.handle === "scribe" && agent.participantId) ??
+      s.roster.find(
+        (agent) => agent.handle === "scribe" && agent.participantId,
+      ) ??
       s.roster.find((agent) => agent.participantId) ??
-      null
+      null,
   );
   const scribeHandle = recipient?.handle ?? "scribe";
-  const clientReady = useAppState((s) => s.client !== null);
+  const clientReady = useAppState((s) => s.connectionStatus === "ready");
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState("");
   const [selection, setSelection] = useState<string | undefined>(undefined);
@@ -75,7 +77,7 @@ export function SendToScribe({
           handle: scribeHandle,
           participantId: recipient.participantId,
           context: { path: vcsPath, selection },
-        }
+        },
       );
       setOpen(false);
       setMessage("");
@@ -107,7 +109,10 @@ export function SendToScribe({
           <ChatBubbleIcon /> {compact ? null : `Ask @${scribeHandle}`}
         </Button>
       </Popover.Trigger>
-      <Popover.Content width="340px" data-testid="spectrolite-send-to-scribe-popover">
+      <Popover.Content
+        width="340px"
+        data-testid="spectrolite-send-to-scribe-popover"
+      >
         <Flex direction="column" gap="2">
           {selection ? (
             <Box
@@ -123,17 +128,22 @@ export function SendToScribe({
                 whiteSpace: "pre-wrap",
               }}
             >
-              {selection.length > 280 ? `${selection.slice(0, 280)}…` : selection}
+              {selection.length > 280
+                ? `${selection.slice(0, 280)}…`
+                : selection}
             </Box>
           ) : (
             <Text size="1" color="gray">
-              Ask @{scribeHandle} to edit this note. Your pending edits are saved first.
+              Ask @{scribeHandle} to edit this note. Your pending edits are
+              saved first.
             </Text>
           )}
           <TextArea
             autoFocus
             placeholder={
-              selection ? "What should the scribe do with this?" : "What should the scribe do?"
+              selection
+                ? "What should the scribe do with this?"
+                : "What should the scribe do?"
             }
             value={message}
             onChange={(e) => setMessage(e.target.value)}

@@ -25,7 +25,6 @@ import type { Store } from "./store";
 import type { ChannelMessage, RosterAgent, SpectroliteState } from "./state";
 import {
   createAndSubscribeAgent,
-  getChannelDOParticipants,
   listAvailableAgents,
   newAgentKey,
   newChannelName,
@@ -85,84 +84,109 @@ function buildAgentConfig(opts: {
 export class SessionController {
   private client: PubSubClient<ChatParticipantMetadata> | null = null;
   private disposed = false;
-  private started = false;
+  private startup: Promise<void> | null = null;
   /** Vault the agents were last scoped to; null until the first selection is observed. */
   private agentRepositoryFocus: string | null = null;
-  private agentsEnsured = false;
-  private agentsEnsureInFlight = false;
-  private agentEnsureRetryTimer: ReturnType<typeof setTimeout> | null = null;
-  private agentEnsureRetryAttempt = 0;
-  private agentFocusUpdate: Promise<void> = Promise.resolve();
+  private agentOperations: Promise<void> = Promise.resolve();
   private unsubscribeRoster: (() => void) | null = null;
 
   constructor(private readonly store: Store<SpectroliteState>) {}
 
   async start(): Promise<void> {
-    if (this.started || this.disposed) return;
-    this.started = true;
-    const state = this.store.getState();
-    const contextId = state.contextId;
-    if (!contextId) {
-      console.warn("[Spectrolite] no context id — cannot start a channel session");
+    if (this.disposed || this.store.getState().connectionStatus === "ready")
       return;
+    if (this.startup) return this.startup;
+    const pending = this.startSession();
+    this.startup = pending;
+    try {
+      await pending;
+    } finally {
+      if (this.startup === pending) this.startup = null;
     }
+  }
 
-    let channelName = state.channelName;
-    if (!channelName) {
-      channelName = newChannelName();
-      this.store.setState({ channelName });
-      void panel.stateArgs.set({ channelName, repoRoot: state.repoRoot ?? undefined });
-    }
-
-    const client = connectViaRpc<ChatParticipantMetadata>({
-      rpc,
-      channel: channelName,
-      contextId,
-      clientId: panel.slotId,
-      metadata: PANEL_METADATA,
-      recoveryCoordinator,
+  private async startSession(): Promise<void> {
+    this.store.setState({
+      connectionStatus: "connecting",
+      connectionError: null,
+      agentsStatus: "idle",
     });
-    this.client = client;
-    this.store.setState({ client });
-
-    void client
-      .ready()
-      .then(async () => {
-        await registerSpectroliteMessageTypes(client);
-        // The initial roster can be delivered before a panel has finished
-        // mounting its listener. Re-read the client's authoritative snapshot
-        // at the ready boundary so a freshly opened panel never starts with a
-        // misleading empty agent list.
-        this.handleRosterUpdate();
-      })
-      .catch((err) => console.warn("[Spectrolite] message type registration failed:", err));
-
-    this.unsubscribeRoster = client.onRoster(() => this.handleRosterUpdate());
-    void this.consumeEvents(client);
-    void listAvailableAgents()
-      .then((agents) => {
-        if (!this.disposed) this.store.setState({ availableAgents: agents });
-      })
-      .catch(() => {});
-
-    // A vault may already be selected (persisted stateArgs / initPanels).
-    const repoRoot = this.store.getState().repoRoot;
-    if (repoRoot) {
-      this.agentRepositoryFocus = repoRoot;
-      await this.ensureAgents();
+    let client: PubSubClient<ChatParticipantMetadata> | null = null;
+    try {
+      const state = this.store.getState();
+      if (!state.contextId)
+        throw new Error("Spectrolite has no workspace context.");
+      let channelName = state.channelName;
+      if (!channelName) {
+        channelName = newChannelName();
+        await panel.stateArgs.set({
+          channelName,
+          repoRoot: state.repoRoot ?? undefined,
+        });
+        this.store.setState({ channelName });
+      }
+      client = connectViaRpc<ChatParticipantMetadata>({
+        rpc,
+        channel: channelName,
+        contextId: state.contextId,
+        clientId: panel.slotId,
+        metadata: PANEL_METADATA,
+        recoveryCoordinator,
+      });
+      this.client = client;
+      this.store.setState({ client });
+      await client.ready();
+      if (this.disposed || this.client !== client) return;
+      await registerSpectroliteMessageTypes(client);
+      if (this.disposed || this.client !== client) return;
+      this.unsubscribeRoster = client.onRoster(() => this.handleRosterUpdate());
+      this.handleRosterUpdate();
+      this.store.setState({ connectionStatus: "ready", connectionError: null });
+      void this.consumeEvents(client);
+      void this.refreshAvailableAgents();
+      if (this.store.getState().repoRoot) await this.ensureAgents();
+    } catch (error) {
+      if (this.disposed || (client && this.client !== client)) return;
+      this.unsubscribeRoster?.();
+      this.unsubscribeRoster = null;
+      client?.close();
+      this.client = null;
+      this.store.setState({
+        client: null,
+        connectionStatus: "error",
+        connectionError: error instanceof Error ? error.message : String(error),
+      });
     }
+  }
+
+  async refreshAvailableAgents(): Promise<void> {
+    try {
+      const agents = await listAvailableAgents();
+      if (!this.disposed)
+        this.store.setState({
+          availableAgents: agents,
+          availableAgentsError: null,
+        });
+    } catch (error) {
+      if (!this.disposed)
+        this.store.setState({
+          availableAgentsError:
+            error instanceof Error ? error.message : String(error),
+        });
+    }
+  }
+
+  async retryAgents(): Promise<void> {
+    await this.ensureAgents();
   }
 
   dispose(): void {
     this.disposed = true;
     this.unsubscribeRoster?.();
     this.unsubscribeRoster = null;
-    if (this.agentEnsureRetryTimer) {
-      clearTimeout(this.agentEnsureRetryTimer);
-      this.agentEnsureRetryTimer = null;
-    }
     this.client?.close();
     this.client = null;
+    this.store.setState({ client: null, connectionStatus: "closed" });
   }
 
   /**
@@ -170,283 +194,198 @@ export class SessionController {
    * context. This is prompt/UI focus, not an authorization scope: file access,
    * context, channel, and agent identities all remain unchanged.
    */
-  onVaultSelected(repoRoot: string): void {
-    if (this.agentRepositoryFocus === repoRoot) return;
-    this.agentRepositoryFocus = repoRoot;
-    if (!this.started || this.disposed) return;
-    if (!this.agentsEnsured) {
-      void this.ensureAgents();
+  onVaultSelected(_repoRoot: string): void {
+    if (this.disposed || this.store.getState().connectionStatus !== "ready")
       return;
-    }
-    this.agentFocusUpdate = this.agentFocusUpdate
-      .then(() => this.updateAgentRepositoryFocus(repoRoot))
-      .catch((err) => console.warn("[Spectrolite] agent repository focus update failed:", err));
+    void this.ensureAgents();
   }
 
-  async send(content: string, options?: { mentions?: string[] }): Promise<void> {
+  async send(
+    content: string,
+    options?: { mentions?: string[] },
+  ): Promise<void> {
     const client = this.client;
-    if (!client) throw new Error("Channel not connected");
+    if (!client || this.store.getState().connectionStatus !== "ready")
+      throw new Error("Channel not connected");
     await client.send(content, options);
   }
 
   openDock(): void {
-    this.store.setState((prev) => ({ dockOpenSignal: prev.dockOpenSignal + 1 }));
+    this.store.setState((prev) => ({
+      dockOpenSignal: prev.dockOpenSignal + 1,
+    }));
   }
 
   // ---- agent management ----
 
-  async addAgent(agentId: string): Promise<void> {
+  addAgent(agentId: string): Promise<void> {
+    return this.withAgents(() => this.addOwnedAgent(agentId));
+  }
+
+  private async addOwnedAgent(agentId: string): Promise<void> {
     const state = this.store.getState();
     const channelName = state.channelName;
     const contextId = state.contextId;
-    if (!channelName || !contextId) return;
+    if (!channelName || !contextId || state.connectionStatus !== "ready")
+      throw new Error("Channel not connected");
     const agents =
-      state.availableAgents.length > 0 ? state.availableAgents : await listAvailableAgents();
-    const agent = agents.find((a) => a.id === agentId || a.className === agentId) ?? agents[0];
-    if (!agent) return;
+      state.availableAgents.length > 0
+        ? state.availableAgents
+        : await listAvailableAgents();
+    const agent = agents.find(
+      (a) => a.id === agentId || a.className === agentId,
+    );
+    if (!agent)
+      throw new Error(
+        `Agent ${agentId} is unavailable. Refresh the agent list and try again.`,
+      );
     const handle = `${agent.proposedHandle}-${crypto.randomUUID().slice(0, 4)}`;
     const key = newAgentKey(handle);
-    const launched = await createAndSubscribeAgent({
-      source: agent.id,
-      className: agent.className,
-      key,
-      channelId: channelName,
-      channelContextId: contextId,
-      config: buildAgentConfig({
-        handle,
-        repoRoot: this.store.getState().repoRoot,
-        className: agent.className,
-      }),
-    });
-    // The subscription ACK is the authoritative confirmation that this agent
-    // is live. Presence is still reconciled from the channel stream, but the
-    // settings UI should acknowledge a successful add immediately instead of
-    // waiting for a separate best-effort broadcast to arrive.
-    this.markAgentLive(handle, launched.participantId);
+    // Persist the selected identity before launching. A rejected or ambiguous
+    // launch remains recoverable through the same owned subscription.
     await this.persistInstalled([
-      ...this.store.getState().installedAgents,
+      ...(this.store.getState().installedAgents ?? []),
       {
         agentId: agent.className,
         handle,
         key,
         source: agent.id,
         className: agent.className,
-        ...(launched.entityId ? { entityId: launched.entityId } : {}),
       },
     ]);
+    this.store.setState({ agentsStatus: "idle" });
+    await this.ensureOwnedAgents();
+    const outcome = this.store.getState();
+    if (outcome.agentsStatus === "error")
+      throw new Error(outcome.agentsError ?? "Agent subscription failed");
   }
 
-  async removeAgent(handle: string): Promise<void> {
-    const state = this.store.getState();
-    const channelName = state.channelName;
-    if (!channelName) return;
-    // Optimistic hide; rolled back if the unsubscribe fails.
-    this.store.setState((prev) => ({ removedHandles: [...prev.removedHandles, handle] }));
-    try {
-      const client = this.client;
-      if (!client) throw new Error("Channel not connected");
-      const workers = await getChannelDOParticipants(client);
-      // Match by the EXACT objectKey we minted on subscribe; prefix-matching
-      // by handle is unsafe when handles share prefixes ("scribe" vs "scribe-x").
-      const record = state.installedAgents.find((a) => a.handle === handle);
-      const match = record ? workers.find((w) => w.objectKey === record.key) : null;
-      if (match) {
-        await unsubscribeDOFromChannel(
-          match.source,
-          match.className,
-          match.objectKey,
-          channelName,
-          record?.entityId
-        );
-      } else {
-        console.warn(
-          `[Spectrolite] no DO worker matches handle "${handle}" (key=${record?.key ?? "?"})`
-        );
-      }
-      await this.persistInstalled(
-        this.store.getState().installedAgents.filter((a) => a.handle !== handle)
+  removeAgent(handle: string): Promise<void> {
+    return this.withAgents(async () => {
+      const state = this.store.getState();
+      if (!state.channelName || state.connectionStatus !== "ready")
+        throw new Error("Channel not connected");
+      const record = state.installedAgents?.find(
+        (agent) => agent.handle === handle,
       );
-    } catch (err) {
+      if (!record)
+        throw new Error(`Assistant ${handle} is not owned by this panel.`);
+      // The owned identity is authoritative even while roster delivery lags.
+      // Forget it only after unsubscribe and retirement have both completed.
+      await unsubscribeDOFromChannel(
+        record.source,
+        record.className,
+        record.key,
+        state.channelName,
+        record.entityId,
+      );
+      await this.persistInstalled(
+        (this.store.getState().installedAgents ?? []).filter(
+          (agent) => agent.key !== record.key,
+        ),
+      );
       this.store.setState((prev) => ({
-        removedHandles: prev.removedHandles.filter((h) => h !== handle),
+        removedHandles: [...prev.removedHandles, handle],
       }));
-      throw err;
-    }
+    });
   }
 
   // ---- internals ----
 
-  private async persistInstalled(installed: InstalledAgentRecord[]): Promise<void> {
-    this.store.setState({ installedAgents: installed });
+  private async persistInstalled(
+    installed: InstalledAgentRecord[],
+  ): Promise<void> {
     await panel.stateArgs.set({ installedAgents: installed });
+    this.store.setState({ installedAgents: installed });
   }
 
-  /** Refresh each stable channel subscription with the selected repository. */
-  private async updateAgentRepositoryFocus(repoRoot: string): Promise<void> {
-    if (this.disposed) return;
-    const state = this.store.getState();
-    if (!state.channelName || !state.contextId) return;
-    if (state.installedAgents.length === 0) {
-      this.agentsEnsured = false;
-      await this.ensureAgents();
-      return;
-    }
-    for (const agent of state.installedAgents) {
-      const launched = await createAndSubscribeAgent({
-        source: agent.source,
-        className: agent.className,
-        key: agent.key,
-        channelId: state.channelName,
-        channelContextId: state.contextId,
-        config: buildAgentConfig({
-          handle: agent.handle,
-          repoRoot,
-          className: agent.className,
-        }),
-      });
-      if (launched.entityId && launched.entityId !== agent.entityId) {
-        await this.persistInstalled(
-          this.store
-            .getState()
-            .installedAgents.map((record) =>
-              record.key === agent.key ? { ...record, entityId: launched.entityId } : record
-            )
-        );
-      }
-    }
+  private withAgents<T>(operation: () => Promise<T>): Promise<T> {
+    const pending = this.agentOperations.then(operation);
+    this.agentOperations = pending.then(
+      () => undefined,
+      () => undefined,
+    );
+    return pending;
   }
 
-  /**
-   * Make sure the persisted agents actually exist as channel DOs.
-   * No persisted agents → create the default scribe. Persisted agents
-   * without live DO participants → re-create each with its stable key
-   * (replay so it catches up on missed events).
-   */
-  private async ensureAgents(): Promise<void> {
-    if (this.agentsEnsured || this.agentsEnsureInFlight || this.disposed) return;
-    this.agentsEnsureInFlight = true;
-    const state = this.store.getState();
-    const { channelName, contextId, repoRoot } = state;
-    if (!channelName || !contextId || !repoRoot) {
-      this.agentsEnsureInFlight = false;
-      return;
-    }
+  /** All changes to installed subscriptions share one session owner. */
+  private ensureAgents(): Promise<void> {
+    return this.withAgents(() => this.ensureOwnedAgents());
+  }
 
+  private async ensureOwnedAgents(): Promise<void> {
+    if (this.disposed || this.store.getState().connectionStatus !== "ready")
+      return;
+    const state = this.store.getState();
+    if (!state.channelName || !state.contextId || !state.repoRoot) return;
+    if (
+      state.agentsStatus === "ready" &&
+      this.agentRepositoryFocus === state.repoRoot
+    )
+      return;
+    await this.subscribeOwnedAgents(
+      state.channelName,
+      state.contextId,
+      state.repoRoot,
+    );
+  }
+
+  private async subscribeOwnedAgents(
+    channelName: string,
+    contextId: string,
+    repoRoot: string,
+  ): Promise<void> {
+    this.store.setState({ agentsStatus: "starting", agentsError: null });
     try {
-      if (state.installedAgents.length === 0) {
-        const agentKey = newAgentKey(DEFAULT_HANDLE);
-        const defaultAgent: InstalledAgentRecord = {
-          agentId: DEFAULT_CLASS_NAME,
-          handle: DEFAULT_HANDLE,
-          key: agentKey,
-          source: DEFAULT_WORKER_SOURCE,
-          className: DEFAULT_CLASS_NAME,
-        };
-        await this.persistInstalled([defaultAgent]);
-        try {
-          const launched = await createAndSubscribeAgent({
+      if (this.store.getState().installedAgents === null) {
+        await this.persistInstalled([
+          {
+            agentId: DEFAULT_CLASS_NAME,
+            handle: DEFAULT_HANDLE,
+            key: newAgentKey(DEFAULT_HANDLE),
             source: DEFAULT_WORKER_SOURCE,
             className: DEFAULT_CLASS_NAME,
-            key: agentKey,
-            channelId: channelName,
-            channelContextId: contextId,
-            config: buildAgentConfig({ handle: DEFAULT_HANDLE, repoRoot }),
-            replay: true,
-          });
-          this.markAgentLive(DEFAULT_HANDLE, launched.participantId);
-          if (launched.entityId) {
-            await this.persistInstalled(
-              this.store
-                .getState()
-                .installedAgents.map((agent) =>
-                  agent.key === agentKey ? { ...agent, entityId: launched.entityId } : agent
-                )
-            );
-          }
-        } catch (err) {
-          await this.persistInstalled(
-            this.store.getState().installedAgents.filter((a) => a.key !== agentKey)
-          );
-          console.warn("[Spectrolite] failed to subscribe default agent:", err);
-          this.scheduleEnsureAgentsRetry();
-          return;
-        }
-        this.markAgentsEnsured();
-        return;
+          },
+        ]);
       }
-
-      // Rehydration: if persisted agent keys are missing from the channel
-      // DO list, re-create those agents with stable keys. This covers
-      // host restarts, picker-screen restarts, and partial rehydrate failures.
-      const client = this.client;
-      if (!client) throw new Error("Channel not connected");
-      const dos = await getChannelDOParticipants(client);
-      const liveKeys = new Set(dos.map((worker) => worker.objectKey));
-      const missing = state.installedAgents.filter((agent) => !liveKeys.has(agent.key));
-      if (missing.length === 0) {
-        this.markAgentsEnsured();
-        return;
-      }
-
-      let failed = false;
-      for (const agent of missing) {
-        try {
-          const launched = await createAndSubscribeAgent({
-            source: agent.source,
+      // Refresh the exact owned subscriptions. A roster entry alone does not
+      // establish that its repository focus or configuration is current.
+      for (const agent of this.store.getState().installedAgents ?? []) {
+        const launched = await createAndSubscribeAgent({
+          source: agent.source,
+          className: agent.className,
+          key: agent.key,
+          channelId: channelName,
+          channelContextId: contextId,
+          config: buildAgentConfig({
+            handle: agent.handle,
+            repoRoot,
             className: agent.className,
-            key: agent.key,
-            channelId: channelName,
-            channelContextId: contextId,
-            config: buildAgentConfig({
-              handle: agent.handle,
-              repoRoot,
-              className: agent.className,
-            }),
-            replay: true,
-          });
-          this.markAgentLive(agent.handle, launched.participantId);
-          if (launched.entityId) {
-            await this.persistInstalled(
-              this.store
-                .getState()
-                .installedAgents.map((record) =>
-                  record.key === agent.key ? { ...record, entityId: launched.entityId } : record
-                )
-            );
-          }
-        } catch (err) {
-          failed = true;
-          console.warn(`[Spectrolite] rehydrate failed for @${agent.handle}:`, err);
-        }
+          }),
+          replay: true,
+        });
+        if (this.disposed) return;
+        this.markAgentLive(agent.handle, launched.participantId);
+        if (launched.entityId && launched.entityId !== agent.entityId)
+          await this.persistInstalled(
+            (this.store.getState().installedAgents ?? []).map((record) =>
+              record.key === agent.key
+                ? { ...record, entityId: launched.entityId }
+                : record,
+            ),
+          );
       }
-      if (failed) this.scheduleEnsureAgentsRetry();
-      else this.markAgentsEnsured();
-    } catch (err) {
-      console.warn("[Spectrolite] rehydration check failed:", err);
-      this.scheduleEnsureAgentsRetry();
-    } finally {
-      this.agentsEnsureInFlight = false;
+      if (!this.disposed) {
+        this.agentRepositoryFocus = repoRoot;
+        this.store.setState({ agentsStatus: "ready", agentsError: null });
+      }
+    } catch (error) {
+      if (!this.disposed)
+        this.store.setState({
+          agentsStatus: "error",
+          agentsError: error instanceof Error ? error.message : String(error),
+        });
     }
-  }
-
-  private markAgentsEnsured(): void {
-    this.agentsEnsured = true;
-    this.agentEnsureRetryAttempt = 0;
-    if (this.agentEnsureRetryTimer) {
-      clearTimeout(this.agentEnsureRetryTimer);
-      this.agentEnsureRetryTimer = null;
-    }
-  }
-
-  private scheduleEnsureAgentsRetry(): void {
-    if (this.disposed || this.agentEnsureRetryTimer) return;
-    this.agentsEnsured = false;
-    const delayMs = Math.min(30_000, 1_000 * 2 ** this.agentEnsureRetryAttempt);
-    this.agentEnsureRetryAttempt += 1;
-    this.agentEnsureRetryTimer = setTimeout(() => {
-      this.agentEnsureRetryTimer = null;
-      void this.ensureAgents();
-    }, delayMs);
   }
 
   private handleRosterUpdate(): void {
@@ -456,11 +395,17 @@ export class SessionController {
     for (const participant of Object.values(client.roster)) {
       const meta = participant.metadata as { handle?: string; type?: string };
       if (meta.type === "panel" || !meta.handle) continue;
-      next.push({ handle: meta.handle, participantId: participant.id, status: "live" });
+      next.push({
+        handle: meta.handle,
+        participantId: participant.id,
+        status: "live",
+      });
     }
     this.store.setState((prev) => {
       const liveHandles = new Set(next.map((agent) => agent.handle));
-      const removedHandles = prev.removedHandles.filter((handle) => liveHandles.has(handle));
+      const removedHandles = prev.removedHandles.filter((handle) =>
+        liveHandles.has(handle),
+      );
       return {
         roster: next,
         removedHandles:
@@ -475,30 +420,46 @@ export class SessionController {
     this.store.setState((prev) => {
       const existing = prev.roster.find((agent) => agent.handle === handle);
       if (existing) {
-        if (existing.status === "live" && existing.participantId === participantId) {
+        if (
+          existing.status === "live" &&
+          existing.participantId === participantId
+        ) {
           return prev;
         }
         return {
           roster: prev.roster.map((agent) =>
             agent.handle === handle
-              ? { ...agent, ...(participantId ? { participantId } : {}), status: "live" as const }
-              : agent
+              ? {
+                  ...agent,
+                  ...(participantId ? { participantId } : {}),
+                  status: "live" as const,
+                }
+              : agent,
           ),
         };
       }
       return {
         roster: [
           ...prev.roster,
-          { handle, ...(participantId ? { participantId } : {}), status: "live" as const },
+          {
+            handle,
+            ...(participantId ? { participantId } : {}),
+            status: "live" as const,
+          },
         ],
       };
     });
   }
 
   /** Stream completed chat messages into the store for the channel dock. */
-  private async consumeEvents(client: PubSubClient<ChatParticipantMetadata>): Promise<void> {
+  private async consumeEvents(
+    client: PubSubClient<ChatParticipantMetadata>,
+  ): Promise<void> {
     try {
-      for await (const event of client.events({ includeReplay: true, includeSignals: false })) {
+      for await (const event of client.events({
+        includeReplay: true,
+        includeSignals: false,
+      })) {
         if (this.disposed || this.client !== client) return;
         const wire = event as unknown as {
           type?: string;
@@ -514,7 +475,8 @@ export class SessionController {
         if (!evt || evt.kind !== "message.completed") continue;
         const content = evt.payload?.content;
         if (typeof content !== "string" || !content) continue;
-        const id = wire.messageId ?? `${wire.senderId ?? "?"}-${wire.ts ?? Date.now()}`;
+        const id =
+          wire.messageId ?? `${wire.senderId ?? "?"}-${wire.ts ?? Date.now()}`;
         const message: ChannelMessage = {
           id,
           senderId: wire.senderId ?? "?",
@@ -529,8 +491,21 @@ export class SessionController {
           return { messages: [...prev.messages, message].slice(-MAX_MESSAGES) };
         });
       }
+      throw new Error(
+        "The channel event stream has closed. Reconnect to resume collaboration.",
+      );
     } catch (err) {
-      if (!this.disposed) console.warn("[Spectrolite] channel event stream ended:", err);
+      if (!this.disposed && this.client === client) {
+        this.unsubscribeRoster?.();
+        this.unsubscribeRoster = null;
+        client.close();
+        this.client = null;
+        this.store.setState({
+          client: null,
+          connectionStatus: "error",
+          connectionError: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
   }
 }

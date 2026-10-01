@@ -49,10 +49,15 @@ export interface SpectroliteState {
   contextId: string | null;
   channelName: string | null;
   client: PubSubClient<ChatParticipantMetadata> | null;
-  installedAgents: InstalledAgentRecord[];
+  connectionStatus: "idle" | "connecting" | "ready" | "error" | "closed";
+  connectionError: string | null;
+  agentsStatus: "idle" | "starting" | "ready" | "error";
+  agentsError: string | null;
+  availableAgentsError: string | null;
+  installedAgents: InstalledAgentRecord[] | null;
   availableAgents: AvailableAgent[];
   roster: RosterAgent[];
-  /** Handles optimistically hidden while a remove call is in flight. */
+  /** Handles removed after their owned subscription settles. */
   removedHandles: ReadonlyArray<string>;
 
   // ---- vault ----
@@ -95,13 +100,18 @@ export function initialState(args: {
   channelName: string | null;
   repoRoot: string | null;
   openPath: string | null;
-  installedAgents: InstalledAgentRecord[];
+  installedAgents?: InstalledAgentRecord[];
 }): SpectroliteState {
   return {
     contextId: args.contextId,
     channelName: args.channelName,
     client: null,
-    installedAgents: args.installedAgents,
+    connectionStatus: "idle",
+    connectionError: null,
+    agentsStatus: "idle",
+    agentsError: null,
+    availableAgentsError: null,
+    installedAgents: args.installedAgents ?? null,
     availableAgents: [],
     roster: [],
     removedHandles: [],
@@ -127,8 +137,10 @@ export function initialState(args: {
   };
 }
 
-/** Roster minus optimistically-removed handles. */
+/** Roster minus confirmed removals still awaiting roster delivery. */
 export function visibleRoster(state: SpectroliteState): RosterAgent[] {
   if (state.removedHandles.length === 0) return state.roster;
-  return state.roster.filter((agent) => !state.removedHandles.includes(agent.handle));
+  return state.roster.filter(
+    (agent) => !state.removedHandles.includes(agent.handle),
+  );
 }

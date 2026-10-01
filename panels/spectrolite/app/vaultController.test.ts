@@ -12,7 +12,10 @@ const runtimeMocks = vi.hoisted(() => ({
 vi.mock("@workspace/runtime", () => ({
   panel: {
     reopen: runtimeMocks.reopen,
-    stateArgs: { get: runtimeMocks.getStateArgs, set: runtimeMocks.setStateArgs },
+    stateArgs: {
+      get: runtimeMocks.getStateArgs,
+      set: runtimeMocks.setStateArgs,
+    },
   },
 }));
 
@@ -35,7 +38,7 @@ describe("VaultController", () => {
             source: "workers/agent",
           },
         ],
-      })
+      }),
     );
     const beforeVaultSwitch = vi.fn(async () => undefined);
     const controller = new VaultController(store, {
@@ -64,7 +67,7 @@ describe("VaultController", () => {
         repoRoot: "projects/notes",
         openPath: null,
         installedAgents: [],
-      })
+      }),
     );
     const files: VaultFileSession = {
       listFiles: async () => [
@@ -97,11 +100,13 @@ describe("VaultController", () => {
         bindVault: vi.fn(() => files),
         onVaultSelected: vi.fn(),
       },
-      files
+      files,
     );
     await controller.refreshPaths();
     expect(store.getState().paths).toEqual(["One.mdx"]);
-    expect(store.getState().pathContentHashes).toEqual({ "One.mdx": "blob:one" });
+    expect(store.getState().pathContentHashes).toEqual({
+      "One.mdx": "blob:one",
+    });
   });
 
   it("selects a repository without reopening or changing the panel context", async () => {
@@ -114,7 +119,7 @@ describe("VaultController", () => {
         repoRoot: null,
         openPath: null,
         installedAgents: [],
-      })
+      }),
     );
     const files: VaultFileSession = {
       listFiles: async () => [],
@@ -132,7 +137,9 @@ describe("VaultController", () => {
     });
 
     controller.selectVault("/projects/default/");
-    await vi.waitFor(() => expect(onVaultSelected).toHaveBeenCalledWith("projects/default"));
+    await vi.waitFor(() =>
+      expect(onVaultSelected).toHaveBeenCalledWith("projects/default"),
+    );
 
     expect(store.getState().contextId).toBe("ctx-panel");
     expect(store.getState().repoRoot).toBe("projects/default");
@@ -142,5 +149,39 @@ describe("VaultController", () => {
       openPath: null,
     });
     expect(runtimeMocks.reopen).not.toHaveBeenCalled();
+  });
+  it("propagates a read failure instead of treating it as an absent note", async () => {
+    const store = createStore(
+      initialState({
+        contextId: "ctx",
+        channelName: "chan",
+        repoRoot: null,
+        openPath: null,
+        installedAgents: [],
+      }),
+    );
+    const createFile = vi.fn(async () => {
+      throw new Error("must not create");
+    });
+    const files: VaultFileSession = {
+      listFiles: async () => [],
+      readFile: async () => {
+        throw new Error("Read permission denied");
+      },
+      createFile,
+    };
+    const controller = new VaultController(store, {
+      beforeVaultSwitch: async () => undefined,
+      bindVault: () => files,
+      onVaultSelected: () => undefined,
+    });
+    controller.selectVault("projects/default");
+    await vi.waitFor(() =>
+      expect(store.getState().repoRoot).toBe("projects/default"),
+    );
+    await expect(controller.createFile("New note", "Body")).rejects.toThrow(
+      "Read permission denied",
+    );
+    expect(createFile).not.toHaveBeenCalled();
   });
 });

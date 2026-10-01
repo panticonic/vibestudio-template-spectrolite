@@ -26,7 +26,10 @@ import type { VaultSemanticVcs } from "./semanticVcs";
 export interface VaultFileSession {
   listFiles(prefix?: string): ReturnType<VaultSemanticVcs["listFiles"]>;
   readFile(path: string): ReturnType<VaultSemanticVcs["readFile"]>;
-  createFile(path: string, text: string): ReturnType<VaultSemanticVcs["createFile"]>;
+  createFile(
+    path: string,
+    text: string,
+  ): ReturnType<VaultSemanticVcs["createFile"]>;
 }
 
 export interface VaultControllerHooks {
@@ -45,7 +48,7 @@ export class VaultController {
   constructor(
     private readonly store: Store<SpectroliteState>,
     private readonly hooks: VaultControllerHooks,
-    private semanticVcs: VaultFileSession | null = null
+    private semanticVcs: VaultFileSession | null = null,
   ) {}
 
   /** The mapping for the active vault (vault-relative ↔ workspace-relative vcs paths). */
@@ -74,7 +77,8 @@ export class VaultController {
     const previousRoot = this.store.getState().repoRoot;
     if (previousRoot !== null) await this.hooks.beforeVaultSwitch();
     const nextSemanticVcs = this.hooks.bindVault(repoRoot);
-    if (!nextSemanticVcs) throw new Error("The panel has no writable semantic workspace context");
+    if (!nextSemanticVcs)
+      throw new Error("The panel has no writable semantic workspace context");
     try {
       await panel.stateArgs.set({ repoRoot, openPath: null });
       this.semanticVcs = nextSemanticVcs;
@@ -120,9 +124,11 @@ export class VaultController {
       repoRoot: null,
     });
     this.semanticVcs = this.hooks.bindVault(null);
-    await panel.stateArgs.set({ repoRoot: null, openPath: null }).catch((err) => {
-      console.warn("[Spectrolite] couldn't persist vault switch state:", err);
-    });
+    await panel.stateArgs
+      .set({ repoRoot: null, openPath: null })
+      .catch((err) => {
+        console.warn("[Spectrolite] couldn't persist vault switch state:", err);
+      });
   }
 
   refreshPaths(): Promise<void> {
@@ -141,7 +147,8 @@ export class VaultController {
       const epoch = this.pathsEpoch;
       this.store.setState({ pathsLoading: true, pathsError: null });
       try {
-        if (!this.semanticVcs) throw new Error("The vault is not bound to a VCS context");
+        if (!this.semanticVcs)
+          throw new Error("The vault is not bound to a VCS context");
         const entries = await this.semanticVcs.listFiles(mapping.toVcsPath(""));
         if (epoch !== this.pathsEpoch) return;
         const pathContentHashes: Record<string, string> = {};
@@ -185,8 +192,9 @@ export class VaultController {
     const mapping = vaultPathMapping(root);
     const vcsPath = mapping.toVcsPath(finalPath);
 
-    if (!this.semanticVcs) throw new Error("The vault is not bound to a VCS context");
-    const existing = await this.semanticVcs.readFile(vcsPath).catch(() => null);
+    if (!this.semanticVcs)
+      throw new Error("The vault is not bound to a VCS context");
+    const existing = await this.semanticVcs.readFile(vcsPath);
     if (existing) return finalPath; // already exists — caller just opens it
 
     await this.semanticVcs.createFile(vcsPath, initialContent);

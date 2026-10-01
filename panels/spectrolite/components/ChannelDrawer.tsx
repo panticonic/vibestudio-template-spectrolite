@@ -9,7 +9,16 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Badge, Box, Flex, IconButton, ScrollArea, Text, TextArea } from "@radix-ui/themes";
+import {
+  Badge,
+  Box,
+  Button,
+  Flex,
+  IconButton,
+  ScrollArea,
+  Text,
+  TextArea,
+} from "@radix-ui/themes";
 import {
   ChevronUpIcon,
   ChevronDownIcon,
@@ -26,7 +35,11 @@ export function ChannelDrawer() {
   const isMobile = useIsMobile();
   const viewportHeight = useViewportHeight();
   const messages = useAppState((s) => s.messages);
-  const clientReady = useAppState((s) => s.client !== null);
+  const clientReady = useAppState((s) => s.connectionStatus === "ready");
+  const connectionStatus = useAppState((s) => s.connectionStatus);
+  const connectionError = useAppState((s) => s.connectionError);
+  const agentsStatus = useAppState((s) => s.agentsStatus);
+  const agentsError = useAppState((s) => s.agentsError);
   const openSignal = useAppState((s) => s.dockOpenSignal);
   const roster = useAppState((s) => s.roster);
   const [open, setOpen] = useState(false);
@@ -54,8 +67,9 @@ export function ChannelDrawer() {
 
   const unreadCount = useMemo(() => {
     if (open) return 0;
-    return messages.filter((m) => m.ts > lastReadAt && m.senderType && m.senderType !== "panel")
-      .length;
+    return messages.filter(
+      (m) => m.ts > lastReadAt && m.senderType && m.senderType !== "panel",
+    ).length;
   }, [messages, lastReadAt, open]);
 
   const mdxActions = useMemo(
@@ -64,7 +78,7 @@ export function ChannelDrawer() {
         await app.session.send(content);
       },
     }),
-    [app]
+    [app],
   );
 
   const send = async () => {
@@ -75,13 +89,13 @@ export function ChannelDrawer() {
     try {
       const addressedHandles = new Set(
         [...content.matchAll(/(^|[\s([{])@([A-Za-z0-9_.-]+)/g)].map((match) =>
-          match[2]!.toLowerCase()
-        )
+          match[2]!.toLowerCase(),
+        ),
       );
       const mentionedIds = roster.flatMap((agent) =>
         agent.participantId && addressedHandles.has(agent.handle.toLowerCase())
           ? [agent.participantId]
-          : []
+          : [],
       );
       await app.session.send(content, { mentions: mentionedIds });
       setDraft("");
@@ -95,6 +109,33 @@ export function ChannelDrawer() {
 
   return (
     <Box className="spectrolite-dock">
+      {connectionStatus === "error" || agentsStatus === "error" ? (
+        <Flex gap="2" align="center" px="3" py="2" wrap="wrap" role="alert">
+          <Text size="1" color="red">
+            {connectionError ?? agentsError}
+          </Text>
+          <Button
+            size="1"
+            variant="soft"
+            onClick={() =>
+              void (connectionStatus === "error"
+                ? app.session.start()
+                : app.session.retryAgents())
+            }
+          >
+            {connectionStatus === "error"
+              ? "Reconnect channel"
+              : "Retry assistant"}
+          </Button>
+        </Flex>
+      ) : null}
+      {connectionStatus === "connecting" || agentsStatus === "starting" ? (
+        <Text size="1" role="status">
+          {connectionStatus === "connecting"
+            ? "Connecting channel…"
+            : "Starting assistant…"}
+        </Text>
+      ) : null}
       <Flex
         align="center"
         justify="between"
@@ -160,14 +201,20 @@ export function ChannelDrawer() {
           direction="column"
           gap="2"
           p="2"
-          style={{ maxHeight: isMobile ? Math.min(viewportHeight * 0.6, 480) : "32vh" }}
+          style={{
+            maxHeight: isMobile ? Math.min(viewportHeight * 0.6, 480) : "32vh",
+          }}
         >
-          <Box ref={scrollRef} style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+          <Box
+            ref={scrollRef}
+            style={{ flex: 1, minHeight: 0, overflowY: "auto" }}
+          >
             <ScrollArea>
               <Flex direction="column" gap="2" p="1">
                 {messages.length === 0 ? (
                   <Text size="1" color="gray">
-                    No messages yet. Address a resident agent below, or use the Ask button in a note.
+                    No messages yet. Address a resident agent below, or use the
+                    Ask button in a note.
                   </Text>
                 ) : (
                   messages.map((m) => {
@@ -178,7 +225,11 @@ export function ChannelDrawer() {
                         className={`spectrolite-bubble ${isAgent ? "spectrolite-bubble--agent" : "spectrolite-bubble--self"}`}
                       >
                         <Flex align="center" justify="between" gap="2" mb="1">
-                          <Text size="1" weight="bold" color={isAgent ? "iris" : "gray"}>
+                          <Text
+                            size="1"
+                            weight="bold"
+                            color={isAgent ? "iris" : "gray"}
+                          >
                             @{m.senderHandle ?? m.senderName ?? m.senderId}
                           </Text>
                         </Flex>

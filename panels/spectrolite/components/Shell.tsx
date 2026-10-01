@@ -192,7 +192,7 @@ export function Shell({ theme }: { theme: "light" | "dark" }) {
 function PickerScreen() {
   const app = useApp();
   const agentHandle = useAppState(
-    (s) => s.roster[0]?.handle ?? s.installedAgents[0]?.handle,
+    (s) => s.roster[0]?.handle ?? s.installedAgents?.[0]?.handle,
   );
   const vaultError = useAppState((s) => s.vaultError);
   const vaultPendingPath = useAppState((s) => s.vaultPendingPath);
