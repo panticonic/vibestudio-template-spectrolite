@@ -11,15 +11,12 @@
  * vaults don't serialize thousands of reads onto the UI update path.
  */
 
-import { useEffect, useState } from "react";
+import { useCallback } from "react";
+import { useAsyncResource } from "@workspace/about-shared/asyncState";
 import { Box, Flex, ScrollArea, Text } from "@radix-ui/themes";
 import { Link2Icon } from "@radix-ui/react-icons";
 import { blobstore } from "@workspace/runtime";
-import {
-  findBacklinks,
-  type Backlink,
-  type BacklinkReader,
-} from "../state/backlinks";
+import { findBacklinks, type BacklinkReader } from "../state/backlinks";
 import { useApp, useAppState } from "../app/context";
 
 function basenameNoExt(path: string): string {
@@ -28,21 +25,45 @@ function basenameNoExt(path: string): string {
 }
 
 export function BacklinksPanel({ onOpened }: { onOpened?: () => void }) {
-  const app = useApp();
   const root = useAppState((s) => s.repoRoot);
   const activePath = useAppState((s) => s.activePath);
+  if (root === null || !activePath) {
+    return (
+      <Text
+        size="1"
+        color="gray"
+        as="div"
+        style={{ padding: "var(--space-3)" }}
+      >
+        Open a file to see its backlinks.
+      </Text>
+    );
+  }
+
+  return (
+    <BacklinksForNote
+      key={JSON.stringify([root, activePath])}
+      root={root}
+      activePath={activePath}
+      onOpened={onOpened}
+    />
+  );
+}
+
+/** A new note owns a new result; rescans of the same note retain its content. */
+function BacklinksForNote({
+  root,
+  activePath,
+  onOpened,
+}: {
+  root: string;
+  activePath: string;
+  onOpened?: () => void;
+}) {
+  const app = useApp();
   const paths = useAppState((s) => s.paths);
   const pathContentHashes = useAppState((s) => s.pathContentHashes);
-  const [backlinks, setBacklinks] = useState<Backlink[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (root === null || !activePath) {
-      setBacklinks([]);
-      return;
-    }
-    let cancelled = false;
-    setLoading(true);
+  const scan = useCallback(async () => {
     const mapping = app.vault.mapping();
     const readFile: BacklinkReader = async (relPath) => {
       const digest = pathContentHashes[relPath];
@@ -55,33 +76,13 @@ export function BacklinksPanel({ onOpened }: { onOpened?: () => void }) {
         .catch(() => null);
       return file && file.content.kind === "text" ? file.content.text : null;
     };
-    void findBacklinks(root, activePath, paths, { concurrency: 96, readFile })
-      .then((bl) => {
-        if (!cancelled) setBacklinks(bl);
-      })
-      .catch(() => {
-        if (!cancelled) setBacklinks([]);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
+    return findBacklinks(root, activePath, paths, {
+      concurrency: 96,
+      readFile,
+    });
   }, [app, root, activePath, paths, pathContentHashes]);
-
-  if (!activePath) {
-    return (
-      <Text
-        size="1"
-        color="gray"
-        as="div"
-        style={{ padding: "var(--space-3)" }}
-      >
-        Open a file to see its backlinks.
-      </Text>
-    );
-  }
+  const { data, loading, error } = useAsyncResource(scan);
+  const backlinks = data ?? [];
 
   return (
     <Flex
@@ -107,6 +108,11 @@ export function BacklinksPanel({ onOpened }: { onOpened?: () => void }) {
       </Flex>
       <Box style={{ flex: 1, minHeight: 0 }}>
         <ScrollArea>
+          {error ? (
+            <Text size="1" color="red" role="alert">
+              {error}
+            </Text>
+          ) : null}
           {loading ? (
             <Text
               size="1"
@@ -116,7 +122,7 @@ export function BacklinksPanel({ onOpened }: { onOpened?: () => void }) {
             >
               Scanning…
             </Text>
-          ) : backlinks.length === 0 ? (
+          ) : data === undefined ? null : backlinks.length === 0 ? (
             <Text
               size="1"
               color="gray"
