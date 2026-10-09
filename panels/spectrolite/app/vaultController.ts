@@ -82,7 +82,7 @@ export class VaultController<
     const previousRoot = this.store.getState().repoRoot;
     if (previousRoot !== null) await this.hooks.beforeVaultSwitch();
     const nextSemanticVcs = this.hooks.prepareVault(repoRoot);
-    await panel.stateArgs.set({ repoRoot, openPath: null });
+    await panel.stateArgs.patch({ repoRoot, openPath: null });
     this.pathsEpoch += 1;
     this.hooks.bindVault(nextSemanticVcs);
     this.semanticVcs = nextSemanticVcs;
@@ -110,7 +110,7 @@ export class VaultController<
     return this.hooks.runNavigation(async () => {
       await this.hooks.beforeVaultSwitch();
       // Retain the editor, binding and recovery cards if persistence is rejected.
-      await panel.stateArgs.set({ repoRoot: null, openPath: null });
+      await panel.stateArgs.patch({ repoRoot: null, openPath: null });
       this.pathsEpoch += 1;
       this.hooks.bindVault(null);
       this.semanticVcs = null;

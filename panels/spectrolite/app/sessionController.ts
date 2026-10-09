@@ -119,7 +119,7 @@ export class SessionController {
       let channelName = state.channelName;
       if (!channelName) {
         channelName = newChannelName();
-        await panel.stateArgs.set({
+        await panel.stateArgs.patch({
           channelName,
           repoRoot: state.repoRoot ?? undefined,
         });
@@ -295,7 +295,7 @@ export class SessionController {
   private async persistInstalled(
     installed: InstalledAgentRecord[],
   ): Promise<void> {
-    await panel.stateArgs.set({ installedAgents: installed });
+    await panel.stateArgs.patch({ installedAgents: installed });
     this.store.setState({ installedAgents: installed });
   }
 

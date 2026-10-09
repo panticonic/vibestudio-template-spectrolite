@@ -241,7 +241,7 @@ export function createSpectroliteApp(): SpectroliteApp {
   ): Promise<void> =>
     navigation.run(async () => {
       if (store.getState().activePath !== path) await flushActiveDocFn?.();
-      await panel.stateArgs.set({ openPath: path, ...(extraStateArgs ?? {}) });
+      await panel.stateArgs.patch({ openPath: path, ...(extraStateArgs ?? {}) });
       if (store.getState().activePath === path) return;
       store.setState((prev) => ({
         activePath: path,

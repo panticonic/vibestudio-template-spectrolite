@@ -316,7 +316,8 @@ export const spectroliteJourney = suite("spectrolite-journey", {
         await handle.click('[aria-label="Files"]');
         await handle.click('.spectrolite-file-row[title="Journey.mdx"]');
         await waitForText(handle, "Keep my original paragraph.");
-        const page = await handle.cdp.page();
+        const session = await handle.cdp.session();
+        const page = session.page;
         const editor = page.getByRole("textbox", { name: "Journey.mdx" });
         await editor.click();
         await page.keyboard.press("Control+End");

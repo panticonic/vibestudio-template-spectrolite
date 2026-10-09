@@ -6,7 +6,7 @@ import { VaultController, type VaultFileSession } from "./vaultController.js";
 const runtimeMocks = vi.hoisted(() => ({
   reopen: vi.fn(async () => undefined),
   getStateArgs: vi.fn(() => ({})),
-  setStateArgs: vi.fn(async () => undefined),
+  patchStateArgs: vi.fn(async () => undefined),
 }));
 
 vi.mock("@workspace/runtime", () => ({
@@ -14,14 +14,14 @@ vi.mock("@workspace/runtime", () => ({
     reopen: runtimeMocks.reopen,
     stateArgs: {
       get: runtimeMocks.getStateArgs,
-      set: runtimeMocks.setStateArgs,
+      patch: runtimeMocks.patchStateArgs,
     },
   },
 }));
 
 describe("VaultController", () => {
   beforeEach(() =>
-    runtimeMocks.setStateArgs.mockReset().mockResolvedValue(undefined),
+    runtimeMocks.patchStateArgs.mockReset().mockResolvedValue(undefined),
   );
   it("retains the selected vault, editor and unresolved work when switching cannot be persisted", async () => {
     const store = createStore(
@@ -44,7 +44,7 @@ describe("VaultController", () => {
       onVaultSelected: () => undefined,
     });
     const failure = new Error("Panel state rejected");
-    runtimeMocks.setStateArgs.mockRejectedValueOnce(failure);
+    runtimeMocks.patchStateArgs.mockRejectedValueOnce(failure);
     await expect(controller.switchVault()).rejects.toBe(failure);
     expect(store.getState().repoRoot).toBe("notes");
     expect(store.getState().activePath).toBe("Original.mdx");
@@ -55,7 +55,7 @@ describe("VaultController", () => {
   });
   it("shows the picker without reopening a second transient panel session", async () => {
     runtimeMocks.reopen.mockClear();
-    runtimeMocks.setStateArgs.mockClear();
+    runtimeMocks.patchStateArgs.mockClear();
     const store = createStore(
       initialState({
         contextId: "vault-notes",
@@ -89,7 +89,7 @@ describe("VaultController", () => {
     expect(beforeVaultSwitch).toHaveBeenCalledOnce();
     expect(store.getState().repoRoot).toBeNull();
     expect(store.getState().installedAgents).toHaveLength(1);
-    expect(runtimeMocks.setStateArgs).toHaveBeenCalledWith({
+    expect(runtimeMocks.patchStateArgs).toHaveBeenCalledWith({
       repoRoot: null,
       openPath: null,
     });
@@ -150,7 +150,7 @@ describe("VaultController", () => {
 
   it("selects a repository without reopening or changing the panel context", async () => {
     runtimeMocks.reopen.mockClear();
-    runtimeMocks.setStateArgs.mockClear();
+    runtimeMocks.patchStateArgs.mockClear();
     const store = createStore(
       initialState({
         contextId: "ctx-panel",
@@ -185,7 +185,7 @@ describe("VaultController", () => {
     expect(store.getState().contextId).toBe("ctx-panel");
     expect(store.getState().repoRoot).toBe("projects/default");
     expect(bindVault).toHaveBeenCalledWith(files);
-    expect(runtimeMocks.setStateArgs).toHaveBeenCalledWith({
+    expect(runtimeMocks.patchStateArgs).toHaveBeenCalledWith({
       repoRoot: "projects/default",
       openPath: null,
     });

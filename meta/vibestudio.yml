@@ -8,6 +8,3 @@ template:
     - url: git+https://github.com/panticonic/vibestudio-base.git
   description: An MDX writing and editing workspace with collaborative agent tooling.
   name: Spectrolite
-  repositories:
-    - packages/mdx-editor-core
-    - panels/spectrolite

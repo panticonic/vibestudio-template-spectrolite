@@ -43,6 +43,11 @@ function client(overrides: Partial<VaultVcsPort> = {}): VaultVcsPort {
   } as VaultVcsPort;
 }
 
+function commandIdFrom(input: { commandId?: string }): string {
+  if (!input.commandId) throw new Error("The vault must send its minted VCS commandId");
+  return input.commandId;
+}
+
 const compareResult = (
   coordinates: Array<{
     coordinate: {
@@ -215,7 +220,7 @@ describe("VaultSemanticVcs", () => {
     const merge = vi.fn(async (input: Parameters<VaultVcsPort["merge"]>[0]) => ({
       status: "working" as const,
       contextId: "ctx",
-      commandId: input.commandId,
+      commandId: commandIdFrom(input),
       workUnitId: "work:decision",
       applicationId: "application:decision",
       decisionId: "decision:local",
@@ -271,7 +276,7 @@ describe("VaultSemanticVcs", () => {
   it("authors text edits against the exact working state", async () => {
     const edit = vi.fn(async (input: Parameters<VaultVcsPort["edit"]>[0]) => ({
       contextId: "ctx",
-      commandId: input.commandId,
+      commandId: commandIdFrom(input),
       workUnitId: "work:edit",
       applicationId: "application:next",
       changeIds: ["change:edit"],
@@ -333,7 +338,7 @@ describe("VaultSemanticVcs", () => {
     const merge = vi.fn(async (input: Parameters<VaultVcsPort["merge"]>[0]) => ({
       status: "working" as const,
       contextId: "ctx",
-      commandId: input.commandId,
+      commandId: commandIdFrom(input),
       workUnitId: "work:merge",
       applicationId: "application:merged",
       decisionId: "decision:merge",
@@ -402,7 +407,7 @@ describe("VaultSemanticVcs", () => {
     const merge = vi.fn(async (input: Parameters<VaultVcsPort["merge"]>[0]) => ({
       status: "working" as const,
       contextId: "ctx",
-      commandId: input.commandId,
+      commandId: commandIdFrom(input),
       workUnitId: "work:merge",
       applicationId: "application:merged",
       decisionId: "decision:merge",

@@ -6,7 +6,7 @@ vi.mock("@workspace/runtime", () => ({
   panel: {
     stateArgs: {
       get: () => ({ repoRoot: "notes", openPath: "Original.mdx" }),
-      set: runtime.set,
+      patch: runtime.set,
     },
   },
 }));

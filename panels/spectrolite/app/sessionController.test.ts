@@ -47,7 +47,7 @@ vi.mock("@workspace/runtime", () => ({
   rpc: {},
   panel: {
     slotId: "panel:slot-test",
-    stateArgs: { set: vi.fn() },
+    stateArgs: { patch: vi.fn() },
   },
 }));
 vi.mock("@workspace/runtime/internal/diagnostics", () => ({
