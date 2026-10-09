@@ -72,15 +72,6 @@ export function ChannelDrawer() {
     ).length;
   }, [messages, lastReadAt, open]);
 
-  const mdxActions = useMemo(
-    () => ({
-      publishMessage: async (content: string) => {
-        await app.session.send(content);
-      },
-    }),
-    [app],
-  );
-
   const send = async () => {
     const content = draft.trim();
     if (!content || !clientReady) return;
@@ -237,7 +228,6 @@ export function ChannelDrawer() {
                           <MessageContent
                             content={m.content}
                             isStreaming={false}
-                            mdxActions={mdxActions}
                           />
                         </Box>
                       </Box>
