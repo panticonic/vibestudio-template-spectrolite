@@ -1,3 +1,4 @@
+import { mainRpcMethods } from "@vibestudio/service-schemas/mainRpc";
 /**
  * Channel + agent bootstrap helpers for the Spectrolite panel.
  *
@@ -133,7 +134,7 @@ function proposedHandleFromName(name: string): string {
 }
 
 export async function listAvailableAgents(): Promise<AvailableAgent[]> {
-  const sources = await rpc.call<WorkerSourceEntry[]>("main", "workers.listSources", []);
+  const sources = await rpc.call("main", mainRpcMethods["workers.listSources"], []);
   const out: AvailableAgent[] = [];
   for (const source of sources) {
     for (const cls of source.classes) {

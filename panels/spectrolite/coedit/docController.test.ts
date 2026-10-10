@@ -228,6 +228,80 @@ describe("DocController", () => {
     await controller.dispose();
   });
 
+  it("observes external snapshot content without inventing a semantic undo change", async () => {
+    const state = editorState();
+    const timers: Array<{ fn: () => void; delay: number }> = [];
+    const remote = {
+      kind: "application" as const,
+      applicationId: "application:external",
+    };
+    const refresh = vi
+      .fn<DocVcs["refresh"]>()
+      .mockResolvedValueOnce({ status: { workingHead: working } })
+      .mockResolvedValue({ status: { workingHead: remote } });
+    const readFile = vi
+      .fn<DocVcs["readFile"]>()
+      .mockResolvedValueOnce({
+        repositoryId: "repo:notes",
+        repoPath: "projects/default",
+        fileId: "file:note",
+        path: "Note.mdx",
+        content: { kind: "text", text: "# Base\n" },
+        contentHash: "blob:base",
+        authoredChangeId: "change:base",
+        authoredByWorkUnitId: "work:base",
+        contentClass: "internal",
+        externalKeys: [],
+        mode: 0o644,
+      })
+      .mockResolvedValue({
+        repositoryId: "repo:notes",
+        repoPath: "projects/default",
+        fileId: "file:note",
+        path: "Note.mdx",
+        content: { kind: "text", text: "# External snapshot\n" },
+        contentHash: "blob:external",
+        authoredChangeId: null,
+        authoredByWorkUnitId: null,
+        contentClass: "external",
+        externalKeys: ["repo:fixture://snapshot@v1"],
+        mode: 0o644,
+      });
+    const sealCommit = vi.fn();
+    state.editor.applyStructural = (operation) =>
+      state.setCanonical(operation.newTexts.join("\n\n"));
+    const controller = new DocController({
+      editor: state.editor,
+      vcs: vcs({ refresh, readFile }),
+      splitBlocks: (markdown) => [
+        {
+          id: "external",
+          signature: markdown,
+          text: markdown,
+          start: 0,
+          end: markdown.length,
+        },
+      ],
+      onCollisions: vi.fn(),
+      undo: { sealCommit },
+      observationMs: 5,
+      setTimer: (fn, delay) => {
+        timers.push({ fn, delay });
+        return timers.length;
+      },
+      clearTimer: vi.fn(),
+    });
+
+    await controller.load("projects/default/Note.mdx");
+    timers.find((timer) => timer.delay === 5)?.fn();
+
+    await vi.waitFor(() =>
+      expect(state.canonical()).toBe("# External snapshot\n"),
+    );
+    expect(sealCommit).not.toHaveBeenCalled();
+    await controller.dispose();
+  });
+
   it("reports canonical MDX failures as unsaved instead of leaking a timer rejection", async () => {
     const state = editorState();
     const timers: Array<{ fn: () => void; delay: number }> = [];

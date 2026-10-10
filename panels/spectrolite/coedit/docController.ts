@@ -374,6 +374,7 @@ export class DocController {
         return;
       }
       if (
+        file.authoredChangeId !== null &&
         !this.authoredChangeIds.has(file.authoredChangeId) &&
         !this.observationSuppressedChangeIds.delete(file.authoredChangeId)
       ) {
