@@ -35,6 +35,7 @@ import {
   useViewportHeight,
 } from "@workspace/react";
 import { useDocState } from "./docState";
+import { deserializeRpcFailure, formatRpcFailure } from "@vibestudio/rpc";
 
 const loadImport = createPanelImportLoader(rpc, {
   defaultWorkspaceRef: () => `ctx:${requireSpectroliteContextId(contextId)}`,
@@ -93,7 +94,11 @@ export function LiveEval({ code, imports }: EvalProps) {
       if (result.success && result.Component) {
         setComponent(() => result.Component as ComponentType);
       } else {
-        setError(result.error ?? "compile failed");
+        setError(
+          result.error
+            ? formatRpcFailure(deserializeRpcFailure(result.error))
+            : "compile failed",
+        );
       }
     });
     return () => {

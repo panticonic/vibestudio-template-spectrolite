@@ -171,6 +171,7 @@
     }
   },
   "dependencies": {
+    "@vibestudio/rpc": "workspace:*",
     "@vibestudio/service-schemas": "workspace:*",
     "@workspace/runtime": "workspace:*",
     "@workspace/about-shared": "workspace:*",

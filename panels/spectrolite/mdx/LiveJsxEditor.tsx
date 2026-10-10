@@ -51,6 +51,7 @@ import { assembleMdxConfig } from "@workspace/mdx-editor-core";
 import type { MdastJsx } from "@workspace/mdx-editor-core";
 import { wikilinkValue } from "./wikilink";
 import { requireSpectroliteContextId } from "../bootstrap";
+import { deserializeRpcFailure, formatRpcFailure } from "@vibestudio/rpc";
 
 // Inline MDX is compiled as an isolated module. Publish the host component so
 // the compiled module renders the same context-aware wikilink as the rest of
@@ -204,7 +205,11 @@ export function LiveJsxEditor(props: JsxEditorProps & LiveJsxEditorOwnProps) {
         if (result.success && result.Component) {
           setComponent(() => result.Component as ComponentType);
         } else {
-          setError(result.error ?? "compile failed");
+          setError(
+            result.error
+              ? formatRpcFailure(deserializeRpcFailure(result.error))
+              : "compile failed",
+          );
         }
       })
       .catch((error) => {

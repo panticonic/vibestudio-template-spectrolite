@@ -17,6 +17,7 @@
  */
 
 import { executeSandbox, type SandboxImportLoader } from "@workspace/eval";
+import { deserializeRpcFailure, formatRpcFailure } from "@vibestudio/rpc";
 
 // In-flight dedupe is scoped per import loader. Within one panel realm it is
 // useMemo'd singleton, so this works exactly like a module-level Map; but
@@ -63,7 +64,11 @@ export async function prefetchDependencies(
         loadImport,
       });
       if (!result.success) {
-        onLog?.(`[spectrolite] dep prefetch reported failure: ${result.error}`);
+        onLog?.(
+          `[spectrolite] dep prefetch reported failure: ${formatRpcFailure(
+            deserializeRpcFailure(result.error),
+          )}`,
+        );
       }
     } catch (err) {
       onLog?.(
