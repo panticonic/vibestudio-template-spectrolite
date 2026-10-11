@@ -1,6 +1,6 @@
 // vendored from @mdxeditor/editor v3.55.0 src/plugins/core/LexicalTextVisitor.ts — MIT © Petyo Ivanov
 import { $isTextNode, TextNode } from 'lexical'
-import * as Mdast from 'mdast'
+import type * as Mdast from 'mdast'
 import { MdxJsxTextElement } from 'mdast-util-mdx-jsx'
 import {
   IS_BOLD,

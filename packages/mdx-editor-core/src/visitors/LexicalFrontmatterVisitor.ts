@@ -1,5 +1,5 @@
 // vendored from @mdxeditor/editor v3.55.0 src/plugins/frontmatter/LexicalFrontmatterVisitor.ts — MIT © Petyo Ivanov
-import * as Mdast from 'mdast'
+import type * as Mdast from 'mdast'
 import { $isFrontmatterNode, FrontmatterNode } from '../nodes/FrontmatterNode'
 import { LexicalExportVisitor } from '../types'
 

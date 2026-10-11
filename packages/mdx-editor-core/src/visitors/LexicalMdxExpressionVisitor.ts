@@ -1,5 +1,5 @@
 // vendored from @mdxeditor/editor v3.55.0 src/plugins/jsx/LexicalMdxExpressionVisitor.ts — MIT © Petyo Ivanov
-import * as Mdast from 'mdast'
+import type * as Mdast from 'mdast'
 import { MdxFlowExpression, MdxTextExpression } from 'mdast-util-mdx'
 import { $isLexicalMdxExpressionNode, LexicalMdxExpressionNode } from '../nodes/LexicalMdxExpressionNode'
 import { LexicalExportVisitor } from '../types'

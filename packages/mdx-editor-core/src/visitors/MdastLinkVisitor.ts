@@ -1,6 +1,6 @@
 // vendored from @mdxeditor/editor v3.55.0 src/plugins/link/MdastLinkVisitor.ts — MIT © Petyo Ivanov
 import { $createLinkNode } from '@lexical/link'
-import * as Mdast from 'mdast'
+import type * as Mdast from 'mdast'
 import { MdastImportVisitor } from '../types'
 
 export const MdastLinkVisitor: MdastImportVisitor<Mdast.Link> = {

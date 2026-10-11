@@ -1,6 +1,6 @@
 // vendored from @mdxeditor/editor v3.55.0 src/plugins/headings/LexicalHeadingVisitor.ts — MIT © Petyo Ivanov
 import { $isHeadingNode, HeadingNode } from '@lexical/rich-text'
-import * as Mdast from 'mdast'
+import type * as Mdast from 'mdast'
 import { LexicalExportVisitor } from '../types'
 
 export const LexicalHeadingVisitor: LexicalExportVisitor<HeadingNode, Mdast.Heading> = {

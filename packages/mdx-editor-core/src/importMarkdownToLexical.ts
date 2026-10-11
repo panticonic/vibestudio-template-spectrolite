@@ -1,7 +1,7 @@
 // vendored from @mdxeditor/editor v3.55.0 src/importMarkdownToLexical.ts — MIT © Petyo Ivanov
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { ElementNode, LexicalNode } from 'lexical'
-import * as Mdast from 'mdast'
+import type * as Mdast from 'mdast'
 import { fromMarkdown } from 'mdast-util-from-markdown'
 import { MdxjsEsm } from 'mdast-util-mdx'
 import { toMarkdown } from 'mdast-util-to-markdown'

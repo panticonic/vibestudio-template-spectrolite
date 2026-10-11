@@ -1,7 +1,7 @@
 // vendored from @mdxeditor/editor v3.55.0 src/plugins/lists/LexicalListItemVisitor.ts — MIT © Petyo Ivanov
 import { $isListItemNode, $isListNode, ListItemNode, ListNode } from '@lexical/list'
 import { $isDecoratorNode, $isElementNode, $isLineBreakNode, $isTextNode } from 'lexical'
-import * as Mdast from 'mdast'
+import type * as Mdast from 'mdast'
 import { LexicalExportVisitor } from '../types'
 
 export const LexicalListItemVisitor: LexicalExportVisitor<ListItemNode, Mdast.ListItem> = {

@@ -10,7 +10,7 @@ import {
   IS_UNDERLINE
 } from '../FormatConstants'
 import { $createTextNode } from 'lexical'
-import * as Mdast from 'mdast'
+import type * as Mdast from 'mdast'
 import { MdxJsxTextElement } from 'mdast-util-mdx-jsx'
 import { MdastImportVisitor } from '../types'
 import { FORMAT } from '../FormatConstants'

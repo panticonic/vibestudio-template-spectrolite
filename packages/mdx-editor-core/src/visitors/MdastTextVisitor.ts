@@ -1,6 +1,6 @@
 // vendored from @mdxeditor/editor v3.55.0 src/plugins/core/MdastTextVisitor.ts — MIT © Petyo Ivanov
 import { $createTextNode } from 'lexical'
-import * as Mdast from 'mdast'
+import type * as Mdast from 'mdast'
 import { MdastImportVisitor } from '../types'
 
 export const MdastTextVisitor: MdastImportVisitor<Mdast.Text> = {
