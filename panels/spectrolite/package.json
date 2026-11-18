@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./index.tsx",
-    "./testkit-suite": "./testkit-suite.ts"
+    "./testkit-suite": "./testkit-suite.ts",
+    "./review-evidence": "./app/reviewEvidence.ts"
   },
   "vibestudio": {
     "title": "Spectrolite",
