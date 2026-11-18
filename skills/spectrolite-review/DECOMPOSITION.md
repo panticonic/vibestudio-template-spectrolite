@@ -12,3 +12,10 @@ The workflow turns one exact vault readback into recommendations for the selecte
 | Combined review | The root chooses the requested review stages and leaves caller operations to the existing panel. |
 
 The input carries only caller-projected evidence. Binary files and missing receipts remain distinguishable. Private panel view state is outside the canonical vault text, and the workflow has no ability to publish, alter source or dispatch a message.
+
+The live branch receives the selected path and checks. A caller-bound leaf reads
+canonical VCS state and the installed editor's preview. It passes that exact
+evidence to the same document and preview subtrees. The caller owns the
+disposable editing context, document navigation, and the independent outcome
+check. The process uses original editor rendering for observed phases and the
+canonical VCS receipt for identity and provenance.

@@ -2,5 +2,9 @@
   "schema": "natlang.package/v2",
   "name": "spectrolite-review",
   "version": "0.1.0",
+  "serviceBinding": "explicit",
+  "serviceScopes": {
+    "spectroliteRead": ["reviewSpectrolite/reviewLiveVault/readVault.nl"]
+  },
   "targets": { "main": { "entry": "reviewSpectrolite.nl" } }
 }

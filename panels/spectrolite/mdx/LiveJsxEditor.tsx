@@ -34,16 +34,17 @@ import {
   useEffect,
   useMemo,
   useState,
+  type ComponentProps,
   type ComponentType,
   type ReactNode,
 } from "react";
 import type { JsxEditorProps } from "@workspace/mdx-editor-core";
-import { Box, Card, Code, Flex, Text } from "@radix-ui/themes";
+import { Box, Button, Card, Code, Flex, Text } from "@radix-ui/themes";
 import { ExclamationTriangleIcon, Pencil1Icon } from "@radix-ui/react-icons";
-import { compileComponent } from "@workspace/eval";
+import { compileComponent, getDefaultRequire } from "@workspace/eval";
 import { createPanelImportLoader } from "@workspace/agentic-core";
 import { contextId, rpc } from "@workspace/runtime";
-import { mdxComponents } from "@workspace/agentic-chat";
+import * as AgenticChat from "@workspace/agentic-chat";
 import { nodeToMdxSource } from "./mdastSerialize";
 import { WikiLink as SpectroliteWikiLink } from "./components";
 import { fromMarkdown } from "mdast-util-from-markdown";
@@ -53,27 +54,46 @@ import { wikilinkValue } from "./wikilink";
 import { requireSpectroliteContextId } from "../bootstrap";
 import { deserializeRpcFailure, formatRpcFailure } from "@vibestudio/rpc";
 
-// Inline MDX is compiled as an isolated module. Publish the host component so
-// the compiled module renders the same context-aware wikilink as the rest of
-// Spectrolite instead of a preview-only imitation.
-(
-  globalThis as typeof globalThis & {
-    __spectroliteWikiLinkComponent__?: typeof SpectroliteWikiLink;
-  }
-).__spectroliteWikiLinkComponent__ = SpectroliteWikiLink;
+function PreviewActionButton({
+  children,
+  message,
+  variant = "soft",
+  size = "1",
+}: Pick<ComponentProps<typeof Button>, "children" | "variant" | "size"> & {
+  message?: ReactNode;
+}) {
+  return (
+    <Button
+      size={size}
+      variant={variant}
+      disabled
+      title="ActionButton is preview-only in Spectrolite documents"
+    >
+      {children ?? message}
+    </Button>
+  );
+}
+
+const catalog = {
+  ...AgenticChat.mdxComponents,
+  WikiLink: SpectroliteWikiLink,
+  ActionButton: PreviewActionButton,
+};
+// The editor's JSX descriptors generate named imports into canonical MDX.
+// Resolve those names and the implicit wrapper bindings from the same catalog.
+const editorModule = { ...AgenticChat, ...catalog, mdxComponents: catalog };
+const importList = Object.keys(catalog).filter((name) => /^[A-Z]/u.test(name)).join(", ");
+
+function requirePreviewModule(name: string): unknown {
+  if (name === "@workspace/agentic-chat") return editorModule;
+  const require = getDefaultRequire();
+  if (!require) throw new Error("The Spectrolite preview module loader is unavailable");
+  return require(name);
+}
 
 const loadImport = createPanelImportLoader(rpc, {
   defaultWorkspaceRef: () => `ctx:${requireSpectroliteContextId(contextId)}`,
 });
-const BASE_LIVE_JSX_IMPORTS = { "@workspace/agentic-chat": "latest" } as const;
-
-// PascalCase component names exported by @workspace/agentic-chat that we
-// inject unconditionally into the live-compile wrapper. The set mirrors
-// the chat panel's MDX component surface so docs are portable.
-const importedNames = Object.keys(
-  mdxComponents as Record<string, unknown>,
-).filter((n) => /^[A-Z]/.test(n));
-const importList = importedNames.join(", ");
 
 /** Preserved top-level MDX module declarations visible to each live JSX node. */
 export const DocModuleSourceContext = createContext("");
@@ -91,26 +111,8 @@ interface MdastJsxLike {
 function wrapForSandbox(source: string, moduleSource: string): string {
   return `
 import * as React from "react";
-import { mdxComponents } from "@workspace/agentic-chat";
-
-// @workspace/agentic-chat exposes the MDX surface as a runtime map, not as
-// individual named exports. Destructure from that map so namespace-style
-// components such as <Callout.Icon> and <Icons.InfoCircledIcon> keep their
-// static properties intact in sandboxed inline JSX.
-const { ${importList} } = mdxComponents;
-
-const WikiLink = globalThis.__spectroliteWikiLinkComponent__ ||
-  function WikiLinkFallback({ target, children }) {
-    return <span data-wikilink={target} className="wikilink">{children ?? target}</span>;
-  };
-
-function ActionButton({ children, message, variant = "soft", size = "1" }) {
-  return (
-    <Button size={size} variant={variant} disabled title="ActionButton is preview-only in Spectrolite documents">
-      {children ?? message}
-    </Button>
-  );
-}
+import { mdxComponents as spectroliteCatalog } from "@workspace/agentic-chat";
+const { ${importList} } = spectroliteCatalog;
 
 // useDocState — Spectrolite publishes the hook on globalThis (see
 // DocumentEditor) so sandboxed components can persist state into the
@@ -191,14 +193,11 @@ export function LiveJsxEditor(props: JsxEditorProps & LiveJsxEditorOwnProps) {
         cancelled = true;
       };
     }
-    const compileImports = {
-      ...BASE_LIVE_JSX_IMPORTS,
-      ...(dependencies ?? {}),
-    };
     void compileComponent(wrapped, {
       loadImport,
+      require: requirePreviewModule,
       sourcePath: `panels/spectrolite/inline-jsx-${tagName === "*" ? "wild" : tagName}.tsx`,
-      imports: compileImports,
+      ...(dependencies ? { imports: dependencies } : {}),
     })
       .then((result) => {
         if (cancelled) return;
@@ -321,7 +320,7 @@ export function LiveJsxEditor(props: JsxEditorProps & LiveJsxEditorOwnProps) {
 
   if (!Component) {
     return (
-      <Box style={{ opacity: 0.6 }}>
+      <Box data-spectrolite-preview="pending" style={{ opacity: 0.6 }}>
         <Text size="1" color="gray">
           Rendering &lt;{tagName}&gt;…
         </Text>
@@ -332,6 +331,7 @@ export function LiveJsxEditor(props: JsxEditorProps & LiveJsxEditorOwnProps) {
   return (
     <Box
       className="spectrolite-jsx-block"
+      data-spectrolite-preview="rendered"
       style={{
         position: "relative",
         borderRadius: "var(--radius-2)",
@@ -358,13 +358,15 @@ function LiveJsxErrorCard({
   tagName,
   error,
   onEdit,
+  phase = "compile-error",
 }: {
   tagName: string;
+  phase?: "compile-error" | "render-error";
   error: string;
   onEdit?: () => void;
 }) {
   return (
-    <Card data-testid="spectrolite-live-jsx-error">
+    <Card data-testid="spectrolite-live-jsx-error" data-spectrolite-preview={phase}>
       <Flex direction="column" gap="1">
         <Flex align="center" gap="1">
           <ExclamationTriangleIcon color="red" />
@@ -413,6 +415,7 @@ class LiveJsxRuntimeBoundary extends ReactComponent<
         <LiveJsxErrorCard
           tagName={this.props.tagName}
           error={this.state.error}
+          phase="render-error"
         />
       );
     }

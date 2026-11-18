@@ -99,3 +99,13 @@ export type ReviewFinding = {
   detail: string;
 };
 export type SpectroliteReviewReport = { findings: ReviewFinding[] };
+
+export type LiveVaultRequest = {
+  kind: "live-vault";
+  goal: string;
+  path: string;
+  checks: ("document" | "preview")[];
+};
+export type SpectroliteWorkflowRequest =
+  | SpectroliteReviewRequest
+  | LiveVaultRequest;
