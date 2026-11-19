@@ -110,6 +110,7 @@ function scenario(
     document: [document?.id],
     preview: [document?.id, preview?.id],
     navigation: [document?.id],
+    revision: [document?.id],
     handoff: [handoff?.id],
     publication: [publication?.id],
   };

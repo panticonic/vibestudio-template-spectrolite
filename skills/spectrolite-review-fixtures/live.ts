@@ -1,6 +1,9 @@
 import { type PanelHandle, vcs } from "@workspace/runtime";
 import { evalInPanel, waitFor } from "@workspace/testkit";
-import { observeVaultReview } from "@workspace-panels/spectrolite/review-evidence";
+import {
+  observeVaultReview,
+  projectDocumentReviewReceipt,
+} from "@workspace-panels/spectrolite/review-evidence";
 import type {
   LiveVaultRequest,
   NavigationHop,
@@ -26,6 +29,11 @@ export type LiveVaultWorld = {
   previewText: string | null;
   expected: ReviewCode[];
   requiredText: string[];
+  draft?: {
+    committedTitle: string;
+    staleText: string | null;
+    visibleText?: string;
+  };
   follow?: { path: string; target: string; destination: string }[];
 };
 
@@ -95,6 +103,13 @@ export function prepareSpectroliteReview(
         const read = await evalInPanel<BrowserRead | null>(panel, readEditor);
         if (!read || read.path !== path || !read.text.includes(world.heading))
           return undefined;
+        if (
+          (world.draft?.staleText &&
+            read.text.includes(world.draft.staleText)) ||
+          (world.draft?.visibleText &&
+            !read.text.includes(world.draft.visibleText))
+        )
+          return undefined;
         const currentPhase = phase(read);
         return world.previewText &&
           (!currentPhase || currentPhase === "pending")
@@ -113,9 +128,27 @@ export function prepareSpectroliteReview(
       before.vault.working.kind !== after.vault.working.kind
     )
       throw new Error("The document changed while observing Spectrolite");
+    const committedRef = after.vault.committed;
+    const committedState =
+      committedRef.kind === "event"
+        ? { kind: "event" as const, eventId: committedRef.id }
+        : { kind: "application" as const, applicationId: committedRef.id };
+    const committedDocument = checks.includes("revision")
+      ? projectDocumentReviewReceipt(
+          `${contextId}:committed-document`,
+          committedState,
+          await vcs.readFile({
+            state: committedState,
+            repositoryId: after.vault.repositoryId,
+            file: { kind: "path", path },
+          }),
+          [],
+        )
+      : null;
     const currentPhase = phase(browser);
     observed = {
       ...after,
+      committedDocument,
       path,
       goal,
       checks,
@@ -141,10 +174,47 @@ export function prepareSpectroliteReview(
   function reference(): SpectroliteReviewReport {
     if (!observed || !observed.document)
       throw new Error("Missing observed vault document");
-    const { vault, document, preview, navigation } = observed;
+    const { vault, document, preview, navigation, committedDocument } =
+      observed;
     const route = navigation ? navigationPaths(navigation.hops) : null;
     return {
       findings: checks.map((check) => {
+        if (check === "revision") {
+          const matches =
+            committedDocument?.fileId === document.fileId &&
+            committedDocument.path === document.path &&
+            committedDocument.repositoryId === vault.repositoryId &&
+            committedDocument.ref.kind === vault.committed.kind &&
+            committedDocument.ref.id === vault.committed.id;
+          const code = !matches
+            ? "revision-unverified"
+            : committedDocument?.contentHash === document.contentHash
+              ? "revision-unchanged"
+              : "draft-changed";
+          return {
+            check,
+            code,
+            evidenceIds: [
+              vault.id,
+              document.id,
+              ...(committedDocument ? [committedDocument.id] : []),
+            ],
+            detail: `${path}: ${code}`,
+          };
+        }
+        if (check === "publication")
+          return {
+            check,
+            code: !vault.clean
+              ? "working-copy-dirty"
+              : vault.relation === "behind" || vault.relation === "diverged"
+                ? "integration-required"
+                : "publication-missing",
+            evidenceIds: [vault.id],
+            detail: !vault.clean
+              ? "The working copy has uncommitted edits."
+              : vault.relation,
+          };
         if (check === "navigation") {
           const ready =
             navigation &&
@@ -217,9 +287,23 @@ export function prepareSpectroliteReview(
         browser?.rendered.some((text) => text.includes(world.previewText!)) ===
           true,
       canonicalDocument:
-        observed?.document?.path === world.path && observed.vault.clean,
+        observed?.document?.path === world.path &&
+        observed.document.ref.kind === observed.vault.working.kind &&
+        observed.document.ref.id === observed.vault.working.id &&
+        observed.vault.clean === !world.draft,
+      committedBaseline:
+        !world.draft ||
+        (observed?.vault.working.kind === "application" &&
+          observed.vault.committed.kind === "event" &&
+          observed.committedDocument?.fileId === observed.document?.fileId &&
+          observed.committedDocument?.title === world.draft.committedTitle),
       browserIdentity:
-        browser?.path === world.path && browser.text.includes(world.heading),
+        browser?.path === world.path &&
+        browser.text.includes(world.heading) &&
+        (!world.draft?.staleText ||
+          !browser.text.includes(world.draft.staleText)) &&
+        (!world.draft?.visibleText ||
+          browser.text.includes(world.draft.visibleText)),
       actualDisposition:
         expected?.findings.every(
           ({ code }, index) => code === world.expected[index],
@@ -241,6 +325,7 @@ export function prepareSpectroliteReview(
               world.requiredText.every((text) =>
                 actual.detail.includes(text),
               )) &&
+            (wanted.check !== "revision" || actual.detail.includes(path)) &&
             (!observed?.preview?.detail ||
               wanted.check !== "preview" ||
               actual.detail.includes(observed.preview.detail)) &&

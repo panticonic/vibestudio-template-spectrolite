@@ -20,3 +20,11 @@ disposable editing context and follows assigned wiki links in the actual editor.
 The navigation reviewer joins observed source and destination paths in order and
 checks that the route ends at the canonical document revision. The preview
 reviewer uses the rendering of that document.
+
+A draft review pairs the working document readback with the same file at the
+vault's committed reference. The VCS lookup and browser readback are exact
+services. The revision reviewer first verifies file and reference identity,
+then assesses whether the working document differs from the committed copy.
+The publication reviewer can report uncommitted working-copy edits from VCS
+even when no publication was attempted. The root can combine both findings
+with link, navigation and rendering checks in the caller's requested order.

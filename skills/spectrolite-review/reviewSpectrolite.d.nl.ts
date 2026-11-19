@@ -60,6 +60,7 @@ type NavigationReceipt = {
 type ReviewCheck = | "document"
   | "preview"
   | "navigation"
+  | "revision"
   | "handoff"
   | "publication";
 type SpectroliteReviewRequest = {
@@ -68,6 +69,7 @@ type SpectroliteReviewRequest = {
   path: string;
   vault: VaultReviewState;
   document: DocumentReviewReceipt | null;
+  committedDocument?: DocumentReviewReceipt | null;
   preview: PreviewReviewReceipt | null;
   navigation?: NavigationReceipt | null;
   scribeTarget: { recipientId: string; selection: string | null } | null;
@@ -90,6 +92,9 @@ type ReviewCode = | "document-ready"
   | "navigation-ready"
   | "navigation-missing"
   | "navigation-unverified"
+  | "revision-unverified"
+  | "revision-unchanged"
+  | "draft-changed"
   | "handoff-verified"
   | "recipient-unassigned"
   | "handoff-missing"
@@ -119,9 +124,15 @@ type LiveVaultRequest = {
   kind: "live-vault";
   goal: string;
   path: string;
-  checks: ("document" | "preview" | "navigation")[];
+  checks: (
+    | "document"
+    | "preview"
+    | "navigation"
+    | "revision"
+    | "publication"
+  )[];
 };
 type SpectroliteWorkflowRequest = | SpectroliteReviewRequest
   | LiveVaultRequest;
-declare const fn: NatlangFunction<[request: SpectroliteWorkflowRequest], SpectroliteReviewReport> & { readonly inspectDocument: NatlangFunction<[request: SpectroliteReviewRequest], ReviewFinding> & { readonly inspectLineage: NatlangFunction<[file: DocumentReviewReceipt], boolean>; readonly inspectLinks: NatlangFunction<[file: DocumentReviewReceipt], string[]> }; readonly inspectHandoff: NatlangFunction<[request: SpectroliteReviewRequest], ReviewFinding> & { readonly checkAudience: NatlangFunction<[request: SpectroliteReviewRequest], ReviewCode | null>; readonly checkCommit: NatlangFunction<[request: SpectroliteReviewRequest], ReviewCode> }; readonly inspectNavigation: NatlangFunction<[request: SpectroliteReviewRequest], ReviewFinding>; readonly inspectPreview: NatlangFunction<[request: SpectroliteReviewRequest], ReviewFinding> & { readonly classifyPreview: NatlangFunction<[preview: PreviewReviewReceipt], ReviewCode>; readonly matchPreview: NatlangFunction<[request: SpectroliteReviewRequest], "match" | "missing" | "stale"> }; readonly inspectPublication: NatlangFunction<[request: SpectroliteReviewRequest], ReviewFinding> & { readonly interpretProgress: NatlangFunction<[request: SpectroliteReviewRequest], ReviewCode | null>; readonly verifyPublishedEvent: NatlangFunction<[request: SpectroliteReviewRequest], ReviewCode> }; readonly reviewLiveVault: NatlangFunction<[request: LiveVaultRequest], SpectroliteReviewReport> & { readonly readVault: NatlangFunction<[], SpectroliteReviewRequest>; readonly inspectDocument: NatlangFunction<[request: SpectroliteReviewRequest], ReviewFinding> & { readonly inspectLineage: NatlangFunction<[file: DocumentReviewReceipt], boolean>; readonly inspectLinks: NatlangFunction<[file: DocumentReviewReceipt], string[]> }; readonly inspectPreview: NatlangFunction<[request: SpectroliteReviewRequest], ReviewFinding> & { readonly classifyPreview: NatlangFunction<[preview: PreviewReviewReceipt], ReviewCode>; readonly matchPreview: NatlangFunction<[request: SpectroliteReviewRequest], "match" | "missing" | "stale"> }; readonly inspectNavigation: NatlangFunction<[request: SpectroliteReviewRequest], ReviewFinding> } };
+declare const fn: NatlangFunction<[request: SpectroliteWorkflowRequest], SpectroliteReviewReport> & { readonly inspectDocument: NatlangFunction<[request: SpectroliteReviewRequest], ReviewFinding> & { readonly inspectLineage: NatlangFunction<[file: DocumentReviewReceipt], boolean>; readonly inspectLinks: NatlangFunction<[file: DocumentReviewReceipt], string[]> }; readonly inspectHandoff: NatlangFunction<[request: SpectroliteReviewRequest], ReviewFinding> & { readonly checkAudience: NatlangFunction<[request: SpectroliteReviewRequest], ReviewCode | null>; readonly checkCommit: NatlangFunction<[request: SpectroliteReviewRequest], ReviewCode> }; readonly inspectNavigation: NatlangFunction<[request: SpectroliteReviewRequest], ReviewFinding>; readonly inspectPreview: NatlangFunction<[request: SpectroliteReviewRequest], ReviewFinding> & { readonly classifyPreview: NatlangFunction<[preview: PreviewReviewReceipt], ReviewCode>; readonly matchPreview: NatlangFunction<[request: SpectroliteReviewRequest], "match" | "missing" | "stale"> }; readonly inspectPublication: NatlangFunction<[request: SpectroliteReviewRequest], ReviewFinding> & { readonly interpretProgress: NatlangFunction<[request: SpectroliteReviewRequest], ReviewCode | null>; readonly verifyPublishedEvent: NatlangFunction<[request: SpectroliteReviewRequest], ReviewCode> }; readonly inspectRevision: NatlangFunction<[request: SpectroliteReviewRequest], ReviewFinding> & { readonly compareDocumentContent: NatlangFunction<[working: DocumentReviewReceipt, committed: DocumentReviewReceipt], ReviewCode>; readonly matchCommittedDocument: NatlangFunction<[request: SpectroliteReviewRequest], boolean> }; readonly reviewLiveVault: NatlangFunction<[request: LiveVaultRequest], SpectroliteReviewReport> & { readonly readVault: NatlangFunction<[], SpectroliteReviewRequest>; readonly inspectDocument: NatlangFunction<[request: SpectroliteReviewRequest], ReviewFinding> & { readonly inspectLineage: NatlangFunction<[file: DocumentReviewReceipt], boolean>; readonly inspectLinks: NatlangFunction<[file: DocumentReviewReceipt], string[]> }; readonly inspectPreview: NatlangFunction<[request: SpectroliteReviewRequest], ReviewFinding> & { readonly classifyPreview: NatlangFunction<[preview: PreviewReviewReceipt], ReviewCode>; readonly matchPreview: NatlangFunction<[request: SpectroliteReviewRequest], "match" | "missing" | "stale"> }; readonly inspectNavigation: NatlangFunction<[request: SpectroliteReviewRequest], ReviewFinding>; readonly inspectRevision: NatlangFunction<[request: SpectroliteReviewRequest], ReviewFinding> & { readonly compareDocumentContent: NatlangFunction<[working: DocumentReviewReceipt, committed: DocumentReviewReceipt], ReviewCode>; readonly matchCommittedDocument: NatlangFunction<[request: SpectroliteReviewRequest], boolean> }; readonly inspectPublication: NatlangFunction<[request: SpectroliteReviewRequest], ReviewFinding> & { readonly interpretProgress: NatlangFunction<[request: SpectroliteReviewRequest], ReviewCode | null>; readonly verifyPublishedEvent: NatlangFunction<[request: SpectroliteReviewRequest], ReviewCode> } } };
 export default fn;
