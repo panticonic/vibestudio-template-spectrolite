@@ -15,7 +15,8 @@ The input carries only caller-projected evidence. Binary files and missing recei
 
 The live branch receives the selected path and checks. A caller-bound leaf reads
 canonical VCS state and the installed editor's preview. It passes that exact
-evidence to the same document and preview subtrees. The caller owns the
-disposable editing context, document navigation, and the independent outcome
-check. The process uses original editor rendering for observed phases and the
-canonical VCS receipt for identity and provenance.
+evidence to the document, preview, and navigation subtrees. The caller owns the
+disposable editing context and follows assigned wiki links in the actual editor.
+The navigation reviewer joins observed source and destination paths in order and
+checks that the route ends at the canonical document revision. The preview
+reviewer uses the rendering of that document.

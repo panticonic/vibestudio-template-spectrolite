@@ -48,7 +48,17 @@ export type PublishReviewReceipt = {
   conflicts: { kind: "file" | "repository"; id: string; summary: string }[];
   lastError: string | null;
 };
-export type ReviewCheck = "document" | "preview" | "handoff" | "publication";
+export type NavigationHop = { from: string; target: string; to: string };
+export type NavigationReceipt = {
+  id: string;
+  hops: NavigationHop[];
+};
+export type ReviewCheck =
+  | "document"
+  | "preview"
+  | "navigation"
+  | "handoff"
+  | "publication";
 export type SpectroliteReviewRequest = {
   goal: string;
   checks: ReviewCheck[];
@@ -56,6 +66,7 @@ export type SpectroliteReviewRequest = {
   vault: VaultReviewState;
   document: DocumentReviewReceipt | null;
   preview: PreviewReviewReceipt | null;
+  navigation?: NavigationReceipt | null;
   scribeTarget: { recipientId: string; selection: string | null } | null;
   handoff: ScribeReviewReceipt | null;
   publication: PublishReviewReceipt | null;
@@ -74,6 +85,9 @@ export type ReviewCode =
   | "preview-pending"
   | "compile-error"
   | "render-error"
+  | "navigation-ready"
+  | "navigation-missing"
+  | "navigation-unverified"
   | "handoff-verified"
   | "recipient-unassigned"
   | "handoff-missing"
@@ -104,7 +118,7 @@ export type LiveVaultRequest = {
   kind: "live-vault";
   goal: string;
   path: string;
-  checks: ("document" | "preview")[];
+  checks: ("document" | "preview" | "navigation")[];
 };
 export type SpectroliteWorkflowRequest =
   | SpectroliteReviewRequest

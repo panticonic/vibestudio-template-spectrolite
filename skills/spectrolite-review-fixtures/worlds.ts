@@ -109,6 +109,7 @@ function scenario(
   const scopes: Record<ReviewCheck, (string | undefined)[]> = {
     document: [document?.id],
     preview: [document?.id, preview?.id],
+    navigation: [document?.id],
     handoff: [handoff?.id],
     publication: [publication?.id],
   };

@@ -3,6 +3,7 @@ import { evalInPanel, waitFor } from "@workspace/testkit";
 import { observeVaultReview } from "@workspace-panels/spectrolite/review-evidence";
 import type {
   LiveVaultRequest,
+  NavigationHop,
   PreviewReviewReceipt,
   ReviewCode,
   SpectroliteReviewRequest,
@@ -25,6 +26,7 @@ export type LiveVaultWorld = {
   previewText: string | null;
   expected: ReviewCode[];
   requiredText: string[];
+  follow?: { path: string; target: string; destination: string }[];
 };
 
 const readEditor = `(() => {
@@ -51,11 +53,25 @@ const phase = ({
           ? "rendered"
           : null;
 
+const navigationPaths = (hops: NavigationHop[]) =>
+  hops.length ? [...hops.map(({ from }) => from), hops.at(-1)!.to] : [];
+
+function describesRoute(detail: string, hops: NavigationHop[]) {
+  let offset = 0;
+  return navigationPaths(hops).every((path) => {
+    const index = detail.indexOf(path, offset);
+    if (index < 0) return false;
+    offset = index + path.length;
+    return true;
+  });
+}
+
 export function prepareSpectroliteReview(
   panel: PanelHandle,
   contextId: string,
   repoPath: string,
   world: LiveVaultWorld,
+  hops: NavigationHop[],
 ) {
   let started = false;
   let observed: SpectroliteReviewRequest | undefined;
@@ -103,6 +119,9 @@ export function prepareSpectroliteReview(
       path,
       goal,
       checks,
+      navigation: hops.length
+        ? { id: `${contextId}:navigation`, hops: structuredClone(hops) }
+        : null,
       scribeTarget: null,
       handoff: null,
       publication: null,
@@ -122,9 +141,34 @@ export function prepareSpectroliteReview(
   function reference(): SpectroliteReviewReport {
     if (!observed || !observed.document)
       throw new Error("Missing observed vault document");
-    const { vault, document, preview } = observed;
+    const { vault, document, preview, navigation } = observed;
+    const route = navigation ? navigationPaths(navigation.hops) : null;
     return {
       findings: checks.map((check) => {
+        if (check === "navigation") {
+          const ready =
+            navigation &&
+            navigation.hops.at(-1)?.to === path &&
+            navigation.hops.every(
+              ({ to }, index) =>
+                !navigation.hops[index + 1] ||
+                to === navigation.hops[index + 1]?.from,
+            );
+          return {
+            check,
+            code: !navigation
+              ? "navigation-missing"
+              : ready
+                ? "navigation-ready"
+                : "navigation-unverified",
+            evidenceIds: [
+              vault.id,
+              document.id,
+              ...(navigation ? [navigation.id] : []),
+            ],
+            detail: route?.join(" → ") ?? "No observed route",
+          };
+        }
         const unresolved = document.links.filter(
           ({ resolvedPath }) => resolvedPath === null,
         );
@@ -161,6 +205,13 @@ export function prepareSpectroliteReview(
   function verify(report: SpectroliteReviewReport | null) {
     const expected = observed ? reference() : null;
     const checks = {
+      exactNavigation:
+        JSON.stringify(observed?.navigation?.hops ?? []) ===
+        JSON.stringify(
+          (world.follow ?? []).map(
+            ({ path: from, target, destination: to }) => ({ from, target, to }),
+          ),
+        ),
       visiblePreview:
         world.previewText === null ||
         browser?.rendered.some((text) => text.includes(world.previewText!)) ===
@@ -192,7 +243,12 @@ export function prepareSpectroliteReview(
               )) &&
             (!observed?.preview?.detail ||
               wanted.check !== "preview" ||
-              actual.detail.includes(observed.preview.detail))
+              actual.detail.includes(observed.preview.detail)) &&
+            (wanted.check !== "navigation" ||
+              Boolean(
+                observed?.navigation &&
+                describesRoute(actual.detail, observed.navigation.hops),
+              ))
           );
         }),
     };
