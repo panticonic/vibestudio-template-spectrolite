@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import { type PanelHandle, vcs } from "@workspace/runtime";
 import { evalInPanel, waitFor } from "@workspace/testkit";
 import {
@@ -363,7 +364,7 @@ export function prepareSpectroliteHandoff(
     { kind: "domain"; domain: string; operation: string },
     { kind: "domain"; domain: string; operation: string },
   ],
-  disposition: "committed-review" | "draft-only",
+  disposition: VaultHandoffPlan["disposition"],
 ) {
   let transferred: VaultHandoffEvidence | undefined;
   async function evidence() {
@@ -384,17 +385,32 @@ export function prepareSpectroliteHandoff(
     });
     return structuredClone(transferred);
   }
-  function expected(receipt: VaultHandoffEvidence): VaultHandoffPlan {
+  function expected(receipt: VaultHandoffEvidence): VaultHandoffPlan | null {
+    const { vault, document, committedDocument, preview } = receipt;
+    const previewMatches =
+      preview?.phase === "rendered" &&
+      preview.documentPath === document.path &&
+      preview.contentHash === document.contentHash;
+    if (disposition === "hold") {
+      return previewMatches
+        ? null
+        : {
+            disposition,
+            ref: null,
+            contentHash: null,
+            evidenceIds: [
+              vault.id,
+              document.id,
+              ...(preview ? [preview.id] : []),
+            ],
+          };
+    }
+    if (!committedDocument || !previewMatches) return null;
     return {
       disposition,
-      ref: receipt.document.ref,
-      contentHash: receipt.document.contentHash,
-      evidenceIds: [
-        receipt.vault.id,
-        receipt.document.id,
-        receipt.committedDocument!.id,
-        receipt.preview!.id,
-      ],
+      ref: document.ref,
+      contentHash: document.contentHash,
+      evidenceIds: [vault.id, document.id, committedDocument.id, preview.id],
     };
   }
   function verify(value: unknown) {
@@ -403,19 +419,10 @@ export function prepareSpectroliteHandoff(
       (result?.results?.[0]?.report ?? null) as SpectroliteReviewReport | null,
     );
     const plan = result?.results?.[1]?.report as VaultHandoffPlan | undefined;
-    const wanted =
-      transferred?.committedDocument && transferred.preview
-        ? expected(transferred)
-        : null;
+    const wanted = transferred ? expected(transferred) : null;
     const checks = {
       verifiedVault: vault.passed,
-      exactHandoff:
-        !!wanted &&
-        plan?.disposition === wanted.disposition &&
-        plan.contentHash === wanted.contentHash &&
-        plan.ref?.kind === wanted.ref?.kind &&
-        plan.ref?.id === wanted.ref?.id &&
-        JSON.stringify(plan.evidenceIds) === JSON.stringify(wanted.evidenceIds),
+      exactHandoff: wanted !== null && isDeepStrictEqual(plan, wanted),
     };
     return {
       passed: Object.values(checks).every(Boolean),
@@ -448,6 +455,10 @@ export function prepareSpectroliteHandoff(
       const receipt = await evidence();
       const report = review.reference();
       const plan = expected(receipt);
+      if (!plan)
+        throw new Error(
+          "The observed vault cannot support the assigned handoff outcome",
+        );
       const withPlan = (candidate: VaultHandoffPlan) => ({
         results: [{ report }, { report: candidate }],
       });
