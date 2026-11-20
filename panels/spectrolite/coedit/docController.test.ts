@@ -4,6 +4,9 @@ import {
   type CoEditEditor,
   type DocVcs,
 } from "./docController.js";
+import { createMdxEditorCore } from "../editor/mdxEditorCore.js";
+import { splitMdxBlocks } from "../editor/parseBlocks.js";
+import { knownJsxDescriptors } from "../mdx/runtime.js";
 
 const working = {
   kind: "application" as const,
@@ -495,4 +498,70 @@ it("joins in-flight observation without applying its result to a retired editor"
   expect(state.canonical()).toBe("# Base\n");
   expect(state.editor.applyStructural).not.toHaveBeenCalled();
   expect(changed).not.toHaveBeenCalled();
+});
+
+it("reflects an externally saved draft with JSX runtime globals", async () => {
+  const original = `---
+title: Public gate draft
+---
+
+# Public gate draft
+
+Gate closes at 18:00.
+
+<Callout color="blue"><Callout.Text>Carry your staff badge.</Callout.Text></Callout>
+
+Leave the emergency lane clear.
+`;
+  const next = original.replace("18:00", "18:45");
+  const committed = { kind: "event" as const, eventId: "event:committed" };
+  const edited = { kind: "application" as const, applicationId: "application:remote-edit" };
+  const path = "projects/default/notices/Public Gate Draft.mdx";
+  const editor = createMdxEditorCore({
+    jsxComponentDescriptors: knownJsxDescriptors().map(descriptor => ({
+      ...descriptor, Editor: () => null,
+    })),
+  });
+  let current: typeof committed | typeof edited = committed;
+  const vcs: DocVcs = {
+    async refresh() { return { status: { workingHead: current } }; },
+    async readFile(_path, state) {
+      const changed = state.kind === "application";
+      return {
+        repositoryId: "repo:notes", repoPath: "projects/default", fileId: "file:notice",
+        path: "notices/Public Gate Draft.mdx",
+        content: { kind: "text", text: changed ? next : original },
+        contentHash: changed ? "blob:edited" : "blob:committed",
+        authoredChangeId: changed ? "change:edited" : "change:committed",
+        authoredByWorkUnitId: changed ? "work:edited" : "work:committed",
+        contentClass: "internal", externalKeys: [], mode: 0o644,
+      };
+    },
+    async edit() { throw new Error("no user edit"); },
+    async commit() { throw new Error("no user commit"); },
+  };
+  const timers: (() => void)[] = [];
+  const issues: unknown[] = [];
+  let observed!: () => void;
+  const afterObserved = new Promise<void>(resolve => { observed = resolve; });
+  const controller = new DocController({
+    editor, vcs, splitBlocks: splitMdxBlocks,
+    onCollisions: collisions => { issues.push(collisions); observed(); },
+    onUnavailable: (_path, reason, error) => { issues.push({ reason, error }); observed(); },
+    onWorkingStateChange: (_path, reason) => { if (reason === "observed") observed(); },
+    setTimer: fn => { timers.push(fn); return timers.length; },
+    clearTimer: () => {},
+  });
+  try {
+    await controller.load(path);
+    current = edited;
+    timers.shift()?.();
+    await afterObserved;
+    expect(issues).toEqual([]);
+    expect(editor.getCanonical()).toContain("Gate closes at 18:45.");
+    expect(editor.getCanonical()).toContain("Carry your staff badge.");
+    expect(editor.getCanonical()).toContain("Leave the emergency lane clear.");
+  } finally {
+    await controller.dispose();
+  }
 });

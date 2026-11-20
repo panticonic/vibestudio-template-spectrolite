@@ -114,62 +114,44 @@ export function exportLexicalTreeToMdast({
     throw new Error('traversal ended with no root element')
   }
 
-  const importsMap = new Map<string, string[]>()
-  const defaultImportsMap = new Map<string, string>()
-  for (const componentName of referredComponents) {
-    const descriptor =
-      jsxComponentDescriptors.find((descriptor) => descriptor.name === componentName) ??
-      knownImportSources.get(componentName) ??
-      jsxComponentDescriptors.find((descriptor) => descriptor.name === '*')
-    if (!descriptor) {
-      throw new Error(`Component ${componentName} is used but not imported`)
-    }
-    if (!descriptor.source) {
-      continue
-    }
-    if (descriptor.defaultExport) {
-      defaultImportsMap.set(componentName, descriptor.source)
-    } else {
-      const { source } = descriptor
-      const existing = importsMap.get(source)
-      if (existing) {
-        existing.push(componentName)
+  const imports: MdxjsEsm[] = []
+  if (addImportStatements) {
+    const importsMap = new Map<string, string[]>()
+    const defaultImportsMap = new Map<string, string>()
+    for (const componentName of referredComponents) {
+      const descriptor =
+        jsxComponentDescriptors.find((descriptor) => descriptor.name === componentName) ??
+        knownImportSources.get(componentName) ??
+        jsxComponentDescriptors.find((descriptor) => descriptor.name === '*')
+      if (!descriptor) {
+        throw new Error(`Component ${componentName} is used but not imported`)
+      }
+      if (!descriptor.source) {
+        continue
+      }
+      if (descriptor.defaultExport) {
+        defaultImportsMap.set(componentName, descriptor.source)
       } else {
-        importsMap.set(source, [componentName])
+        const { source } = descriptor
+        const existing = importsMap.get(source)
+        if (existing) {
+          existing.push(componentName)
+        } else {
+          importsMap.set(source, [componentName])
+        }
       }
     }
-  }
-
-  if (!addImportStatements) {
-    for (const [path, names] of importsMap.entries()) {
-      const cleaned = names.filter((n) => knownImportSources.has(n))
-      if (cleaned.length > 0) {
-        importsMap.set(path, cleaned)
-      } else {
-        importsMap.delete(path)
-      }
-    }
-    for (const key of defaultImportsMap.keys()) {
-      if (!knownImportSources.has(key)) {
-        defaultImportsMap.delete(key)
-      }
-    }
-  }
-
-  const imports = Array.from(importsMap).map(([source, componentNames]) => {
-    return {
-      type: 'mdxjsEsm',
-      value: `import { ${componentNames.join(', ')} } from '${source}'`
-    } as MdxjsEsm
-  })
-  imports.push(
-    ...Array.from(defaultImportsMap).map(([componentName, source]) => {
-      return {
+    imports.push(
+      ...Array.from(importsMap, ([source, componentNames]): MdxjsEsm => ({
+        type: 'mdxjsEsm',
+        value: `import { ${componentNames.join(', ')} } from '${source}'`
+      })),
+      ...Array.from(defaultImportsMap, ([componentName, source]): MdxjsEsm => ({
         type: 'mdxjsEsm',
         value: `import ${componentName} from '${source}'`
-      } as MdxjsEsm
-    })
-  )
+      }))
+    )
+  }
 
   const typedRoot = unistRoot as Mdast.Root
   const frontmatter = typedRoot.children.find((child) => child.type === 'yaml')
@@ -287,10 +269,13 @@ export function exportMarkdownFromLexical({
   toMarkdownExtensions,
   visitors,
   jsxComponentDescriptors,
-  jsxIsAvailable
+  jsxIsAvailable,
+  addImportStatements = true
 }: ExportMarkdownFromLexicalOptions): string {
   return (
-    toMarkdown(exportLexicalTreeToMdast({ root, visitors, jsxComponentDescriptors, jsxIsAvailable }), {
+    toMarkdown(exportLexicalTreeToMdast({
+      root, visitors, jsxComponentDescriptors, jsxIsAvailable, addImportStatements
+    }), {
       extensions: toMarkdownExtensions,
       ...toMarkdownOptions
     }) + '\n'

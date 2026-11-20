@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { $getRoot, $createTextNode, type ElementNode } from "lexical";
 import { createMdxEditorCore, HISTORIC_TAG } from "./mdxEditorCore.js";
 import { buildEditOps } from "../coedit/commitEdits.js";
+import { knownJsxDescriptors } from "../mdx/runtime.js";
 
 describe("MdxEditorCore (headless Lexical + vendored pipeline)", () => {
   it("round-trips markdown through import → export", () => {
@@ -32,6 +33,21 @@ export const Counter = () => <Button>Count</Button>;
     );
     expect(out).toContain("<Counter />");
     expect(out).toContain("title: Counter");
+  });
+
+  it("preserves authored imports without synthesizing imports for runtime globals", () => {
+    const core = createMdxEditorCore({
+      jsxComponentDescriptors: knownJsxDescriptors().map(descriptor => ({
+        ...descriptor,
+        Editor: () => null,
+      })),
+    });
+    const authored = 'import { Card as AuthoredCard } from "./custom.js";';
+    core.setCanonical(`${authored}\n\n<Callout>Runtime component</Callout>\n\n<AuthoredCard>Authored component</AuthoredCard>`);
+    const canonical = core.getCanonical();
+    expect(canonical.match(/^import .*$/gmu)).toEqual([authored]);
+    expect(canonical).toContain("<Callout>Runtime component</Callout>");
+    expect(canonical).toContain("<AuthoredCard>Authored component</AuthoredCard>");
   });
 
   it("round-trips wikilinks through the internal live-JSX representation", () => {

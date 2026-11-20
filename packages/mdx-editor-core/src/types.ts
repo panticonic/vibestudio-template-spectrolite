@@ -273,6 +273,7 @@ export interface ExportLexicalTreeOptions {
   visitors: LexicalVisitor[]
   jsxComponentDescriptors: JsxComponentDescriptor[]
   jsxIsAvailable: boolean
+  /** Synthesize imports from JSX descriptors. Authored ESM is preserved either way. */
   addImportStatements?: boolean
 }
 
