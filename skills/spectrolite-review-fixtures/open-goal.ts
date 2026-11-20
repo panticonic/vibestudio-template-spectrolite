@@ -320,6 +320,9 @@ export async function prepareOpenSpectroliteGoal(
 
   async function reference() {
     let current = await services.spectroliteGoal.inspect();
+    const observedTarget = current.links.find(({ path }) => path)?.target ?? "no-observed-target";
+    const rejectsStaleView = await services.spectroliteGoal.follow(observedTarget, "prior-editor-revision") === "changed";
+    const rejectsLinkAlias = await services.spectroliteGoal.follow(`./${observedTarget}`, current.revision) === "unavailable";
     for (const { target } of expected.route) {
       if (await services.spectroliteGoal.follow(target, current.revision) !== "followed")
         throw new Error("The reference route could not follow the observed wiki-link");
@@ -349,7 +352,9 @@ export async function prepareOpenSpectroliteGoal(
       status: expected.editedSource === undefined ? "reviewed" : "edited",
       path: current.path, revision: current.revision, review: { findings },
     };
-    return { outcome, verification: await verify({ status: "workspace-skill-reviewed", skill: "spectrolite", outcome }) };
+    const verified = await verify({ status: "workspace-skill-reviewed", skill: "spectrolite", outcome });
+    const checks = { ...verified.checks, rejectsStaleView, rejectsLinkAlias };
+    return { outcome, verification: { ...verified, checks, passed: Object.values(checks).every(Boolean) } };
   }
   return { goal, services, verify, reference, qualify: async () => (await reference()).verification };
 }
