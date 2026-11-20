@@ -391,7 +391,12 @@ export async function prepareVaultKnowledge(
                 finding.code === code &&
                 finding.code === codes(evidence, check) &&
                 isDeepStrictEqual(finding.evidenceIds, ids(evidence, check)) &&
-                Boolean(finding.detail?.trim())
+                Boolean(finding.detail?.trim()) &&
+                (!(code === "compile-error" || code === "render-error") ||
+                  Boolean(
+                    evidence.preview?.detail &&
+                    finding.detail.includes(evidence.preview.detail),
+                  ))
               );
             })
           );
@@ -489,7 +494,10 @@ export async function prepareVaultKnowledge(
                 evidence,
                 check,
               ) as VaultKnowledgeRead["review"]["findings"][number]["code"],
-              detail: "Read exact native " + check,
+              detail:
+                check === "preview" && evidence.preview?.detail
+                  ? evidence.preview.detail
+                  : "Read exact native " + check,
               evidenceIds: ids(evidence, check),
             })),
           },

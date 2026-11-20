@@ -48,6 +48,12 @@ const readEditor = `() => {
       item => item.innerText)
   };
 }`;
+function renderedDocumentChanged(before: BrowserRead, after: BrowserRead): boolean {
+  return before.text !== after.text ||
+    !isDeepStrictEqual(before.links, after.links) ||
+    !isDeepStrictEqual(before.preview, after.preview);
+}
+
 const stateRef = ({ kind, id }: { kind: "event" | "application"; id: string }) =>
   kind === "event" ? { kind, eventId: id } : { kind, applicationId: id };
 
@@ -220,12 +226,12 @@ export async function prepareOpenSpectroliteGoal(
           try {
             await waitFor(async () => {
               last = await observe(view.path);
-              return last.view.source === source && last.read.text !== current.read.text ? true : undefined;
+              return last.view.source === source && renderedDocumentChanged(current.read, last.read) ? true : undefined;
             }, { label: "Read the saved change from the Spectrolite editor" });
           } catch (error) {
             throw new Error(
               `Spectrolite could not read the saved change in the editor: ${JSON.stringify({
-                persisted: last.view.source === source, visibleChange: last.read.text !== current.read.text,
+                persisted: last.view.source === source, visibleChange: renderedDocumentChanged(current.read, last.read),
                 before: current.working, after: last.working, notices: last.read.reviewNotices,
               })}`,
               { cause: error },
