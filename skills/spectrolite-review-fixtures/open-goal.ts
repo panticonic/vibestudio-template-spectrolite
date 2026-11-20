@@ -111,10 +111,16 @@ export async function prepareOpenSpectroliteGoal(
   let latestEvidence: Awaited<ReturnType<typeof evidence>> | undefined;
   let busy = false;
   const revisionAttempts: { revision: string; outcome: string }[] = [];
-  async function currentRevision(revision: string) {
-    if (inspections.at(-1)?.view.revision !== revision) return null;
+  async function currentRevision(revision: string, intent: "navigate" | "edit") {
+    const previous = inspections.at(-1);
+    if (previous?.view.revision !== revision) return null;
     const current = await observe();
-    return current.view.revision === revision ? current : null;
+    if (intent === "navigate") return current.view.revision === revision ? current : null;
+    const sameSource = current.view.path === previous.view.path &&
+      current.document.fileId === previous.document.fileId && current.view.source === previous.view.source &&
+      isDeepStrictEqual(current.working, previous.working) &&
+      isDeepStrictEqual(current.binding.generation, previous.binding.generation);
+    return sameSource ? current : null;
   }
   async function evidence(checks: string[]) {
     const observed = await observe();
@@ -146,7 +152,7 @@ export async function prepareOpenSpectroliteGoal(
         if (busy) return "changed";
         busy = true;
         try {
-          const current = await currentRevision(revision);
+          const current = await currentRevision(revision, "navigate");
           if (!current) return "changed";
           const link = current.view.links.find(item => item.target === target);
           if (!link?.path) return "unavailable";
@@ -181,7 +187,7 @@ export async function prepareOpenSpectroliteGoal(
         if (busy) return "changed";
         busy = true;
         try {
-          const current = await currentRevision(revision);
+          const current = await currentRevision(revision, "edit");
           if (!current) {
             revisionAttempts.push({ revision, outcome: "changed" });
             return "changed";
@@ -325,7 +331,7 @@ export async function prepareOpenSpectroliteGoal(
         current = await services.spectroliteGoal.inspect();
         revision = await services.spectroliteGoal.revise(current.revision, expected.editedSource);
       }
-      if (revision !== "written") throw new Error("The reference draft could not be persisted");
+      if (revision !== "written") throw new Error(`The reference draft could not be persisted (${revision})`);
       current = await services.spectroliteGoal.inspect();
     }
     const data = await services.spectroliteGoal.evidence(expected.findings.map(([check]) => check));
