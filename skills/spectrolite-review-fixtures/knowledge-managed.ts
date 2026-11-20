@@ -13,6 +13,10 @@ import type {
   VaultKnowledgeReport,
 } from "../spectrolite-review/types.js";
 import { prepareOpenSpectroliteGoal } from "./open-goal.js";
+import {
+  verifiesKnowledgeGraph,
+  type KnowledgeGraphExpectation,
+} from "./knowledge-graph.js";
 
 type Check = "document" | "preview" | "revision";
 type Step =
@@ -38,6 +42,7 @@ export type VaultKnowledgeWorld = {
     outcome: VaultKnowledgeOutcome;
     citations: string[];
     disposition?: VaultHandoffPlan["disposition"];
+    graph?: KnowledgeGraphExpectation;
   };
 };
 type Input = { contextId: string; caseId: string; panelId: string };
@@ -153,6 +158,7 @@ export async function prepareVaultKnowledge(
   let saved: VaultKnowledgeHandoff | null = null;
   let handoffAttempt: { audience: string; plan: VaultHandoffPlan } | undefined;
   let staging = false;
+  let handoffAt: number | undefined;
 
   function record<T>(
     service: string,
@@ -283,6 +289,7 @@ export async function prepareVaultKnowledge(
           const exact = planFor(handoffBasis.evidence);
           if (!isDeepStrictEqual(plan, exact)) return done(null);
           handoffAttempt = { audience, plan };
+          handoffAt = events.length;
           if (plan.disposition === "hold") return done(null);
           const receipt = {
             audience,
@@ -360,16 +367,27 @@ export async function prepareVaultKnowledge(
     const expectedWorking = { ...world.files, ...world.draft };
     const paths = expectation.steps.filter((step) => step.kind === "write");
     for (const step of paths) expectedWorking[step.path] = step.source;
-    const readSteps = expectation.steps.filter((step) => step.kind === "read");
+    const readSteps = (expectation.graph ? events : expectation.steps).filter(
+      (step) => step.kind === "read",
+    );
     const persisted =
       file && saved ? JSON.parse(await fs.readFile(file, "utf8")) : null;
     const authorityPath =
-      expectation.outcome === "authority-confirmed" ? expectation.path : null;
+      expectation.outcome === "authority-confirmed"
+        ? (expectation.graph?.authorityPath ?? expectation.path)
+        : null;
     const noHandOffFile =
       !directory || !(await fs.readdir(directory)).includes("review.json");
     const checks = {
       exactVaultRoute:
-        isDeepStrictEqual(events, expectation.steps) &&
+        (expectation.graph
+          ? verifiesKnowledgeGraph(
+              expectation.graph,
+              expectation.steps,
+              events,
+              handoffAt,
+            )
+          : isDeepStrictEqual(events, expectation.steps)) &&
         views[0]?.path === world.openPath &&
         views.at(-1)?.revision === final.view.revision &&
         final.view.path === expectation.path &&
@@ -405,11 +423,15 @@ export async function prepareVaultKnowledge(
         isDeepStrictEqual(workingFiles, expectedWorking) &&
         isDeepStrictEqual(committedFiles, world.files) &&
         writes.length === paths.length &&
-        paths.every(
-          (step, i) =>
-            writes[i]?.path === step.path &&
-            writes[i].toSourceHash === sha256HexSyncText(step.source),
-        ),
+        paths.every((step, i) => {
+          const write = expectation.graph
+            ? writes.find((value) => value.path === step.path)
+            : writes[i];
+          return (
+            write?.path === step.path &&
+            write.toSourceHash === sha256HexSyncText(step.source)
+          );
+        }),
       preservedCommittedVault:
         isDeepStrictEqual(status.committed, initial.committed) &&
         status.mainEventId === initial.mainEventId &&
@@ -458,7 +480,7 @@ export async function prepareVaultKnowledge(
     };
   }
 
-  async function qualify() {
+  async function qualify(referenceSteps: readonly Step[] = world.expected.steps) {
     let current = await services.spectroliteGoal.inspect();
     const realLink =
       current.links.find((row) => row.path)?.target ?? "unobserved";
@@ -471,7 +493,7 @@ export async function prepareVaultKnowledge(
         current.revision,
       )) === "unavailable";
     const reads: VaultKnowledgeRead[] = [];
-    for (const step of world.expected.steps) {
+    for (const step of referenceSteps) {
       if (step.kind === "follow") {
         if (
           (await services.spectroliteGoal.follow(
@@ -547,7 +569,7 @@ export async function prepareVaultKnowledge(
       outcome: world.expected.outcome,
       authorityPath:
         world.expected.outcome === "authority-confirmed"
-          ? world.expected.path
+          ? (world.expected.graph?.authorityPath ?? world.expected.path)
           : null,
       reads,
       answer: world.expected.citations.join(" · "),

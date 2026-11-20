@@ -1,0 +1,7 @@
+# Linked evidence across branches
+
+The existing Spectrolite runner provides exact wiki destinations from the current renderer, independent working and committed VCS reads, revision-checked edits, and local handoff receipts. Existing knowledge cases ask for ordered chains, distinctions between working and committed material, preview recovery, or two note corrections. This batch keeps those capabilities and adds evidence branches that can be explored in either order, qualified references with duplicate display names, cycles and return paths, and a decision whose source is distinct from its eventual handoff note.
+
+The existing Natlang entry and children retain interpretation, route choice, content edits, recovery, and synthesis. The navigation decision receives ordered past reads and currently resolved target paths. It can pick unvisited evidence and find its way back to a separate working or handoff note. The summary names the controlling note even when another note is open. No additional service or authority is needed.
+
+The private receiver records exact native observations and compares required evidence and partial ordering, rather than grading the reference traversal as policy. Contract inputs include the sources required before a write or a handoff, readback after each write, final native file contents and protected heads, and actual retained local receipt. The deterministic reference route remains private. Independent reference routes, missing-evidence attempts, forged routes and superseded edit bases are qualified separately.
