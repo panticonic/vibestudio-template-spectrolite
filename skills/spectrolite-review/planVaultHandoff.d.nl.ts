@@ -159,5 +159,33 @@ type OpenVaultDecision = | { kind: "follow"; target: string }
   | { kind: "blocked"; reason: string };
 type OpenVaultReport = | { status: "reviewed" | "edited"; path: string; revision: string; review: SpectroliteReviewReport }
   | { status: "blocked"; reason: string };
+type VaultKnowledgeRead = {
+  view: OpenVaultView;
+  review: SpectroliteReviewReport;
+};
+type VaultKnowledgeOutcome = | "authority-confirmed" | "conflict-unresolved" | "retired-link"
+  | "draft-differs" | "preview-confirmed" | "preview-unavailable"
+  | "edited" | "handoff-staged" | "handoff-held";
+type VaultKnowledgeStep = | { kind: "follow"; target: string }
+  | { kind: "read"; checks: ("document" | "preview" | "revision")[] }
+  | { kind: "revise"; source: string }
+  | { kind: "handoff"; audience: string }
+  | { kind: "finish" };
+type VaultKnowledgeHandoff = {
+  audience: string;
+  path: string;
+  revision: string;
+  plan: VaultHandoffPlan;
+  receipt: string;
+};
+type VaultKnowledgeReport = {
+  path: string;
+  revision: string;
+  outcome: VaultKnowledgeOutcome;
+  authorityPath: string | null;
+  reads: VaultKnowledgeRead[];
+  answer: string;
+  handoff: VaultKnowledgeHandoff | null;
+};
 declare const fn: NatlangFunction<[request: { goal: string; path: string }], VaultHandoffPlan> & { readonly chooseHandoff: NatlangFunction<[path: string, evidence: VaultHandoffEvidence], VaultHandoffPlan> };
 export default fn;

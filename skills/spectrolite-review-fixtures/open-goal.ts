@@ -54,7 +54,7 @@ const stateRef = ({ kind, id }: { kind: "event" | "application"; id: string }) =
 export async function prepareOpenSpectroliteGoal(
   { contextId, caseId, panelId }: Inputs,
   world: OpenSpectroliteScene,
-  { beforeWrite }: { beforeWrite?: () => Promise<void> } = {},
+  { beforeWrite, writablePaths }: { beforeWrite?: (path: string) => Promise<void>; writablePaths?: readonly string[] } = {},
 ) {
   if (world.id !== caseId || !panelId) throw new Error("The Spectrolite goal needs its owned scene and editor");
   const { goal, expected } = world;
@@ -193,9 +193,10 @@ export async function prepareOpenSpectroliteGoal(
             return "changed";
           }
           const { view, vault, document, working } = current;
-          if (view.path !== world.writablePath || typeof source !== "string" || source === view.source ||
-              source.length > 16_000 || writes.length) return "unavailable";
-          await beforeWrite?.();
+          const authorized = writablePaths ? writablePaths.includes(view.path) : view.path === world.writablePath;
+          if (!authorized || typeof source !== "string" || source === view.source ||
+              source.length > 16_000 || writes.some(write => write.path === view.path)) return "unavailable";
+          await beforeWrite?.(view.path);
           let edited;
           try {
             edited = await vcs.edit({
@@ -251,16 +252,7 @@ export async function prepareOpenSpectroliteGoal(
     const outcome = report?.status === "workspace-skill-reviewed" && report.skill === "spectrolite"
       ? report.outcome as { status?: string; path?: string; revision?: string; review?: { findings: Finding[] } }
       : null;
-    const final = await observe();
-    const status = await vcs.status({ contextId });
-    const readFiles = async (state: typeof final.working) => Object.fromEntries(
-      await Promise.all(Object.keys(world.files).map(async path => {
-        const file = await vcs.readFile({ state, repositoryId: final.vault.repositoryId, file: { kind: "path", path } });
-        return [path, file?.content.kind === "text" ? file.content.text : null];
-      })),
-    );
-    const committedFiles = await readFiles(stateRef(final.vault.committed));
-    const workingFiles = await readFiles(final.working);
+    const { final, status, committedFiles, workingFiles } = await inspectNativeState();
     const expectedWorking = { ...world.files, ...world.draft };
     if (expected.editedSource !== undefined) expectedWorking[expected.path] = expected.editedSource;
     const observations = inspections.map(({ read, view, binding }) => ({ path: view.path, revision: view.revision, visible: read.text, binding }));
@@ -356,5 +348,21 @@ export async function prepareOpenSpectroliteGoal(
     const checks = { ...verified.checks, rejectsStaleView, rejectsLinkAlias };
     return { outcome, verification: { ...verified, checks, passed: Object.values(checks).every(Boolean) } };
   }
-  return { goal, services, verify, reference, qualify: async () => (await reference()).verification };
+  async function inspectNativeState() {
+    const final = await observe();
+    const status = await vcs.status({ contextId });
+    const readFiles = async (state: typeof final.working) => Object.fromEntries(
+      await Promise.all(Object.keys(world.files).map(async path => {
+        const file = await vcs.readFile({ state, repositoryId: final.vault.repositoryId, file: { kind: "path", path } });
+        return [path, file?.content.kind === "text" ? file.content.text : null];
+      })),
+    );
+    return {
+      final, status, initial, committedFiles: await readFiles(stateRef(final.vault.committed)),
+      workingFiles: await readFiles(final.working),
+      hops: structuredClone(hops), writes: structuredClone(writes),
+      revisionAttempts: structuredClone(revisionAttempts),
+    };
+  }
+  return { goal, services, verify, reference, inspectLive: observe, inspectNativeState, qualify: async () => (await reference()).verification };
 }

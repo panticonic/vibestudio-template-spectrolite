@@ -162,3 +162,34 @@ export type OpenVaultDecision =
 export type OpenVaultReport =
   | { status: "reviewed" | "edited"; path: string; revision: string; review: SpectroliteReviewReport }
   | { status: "blocked"; reason: string };
+
+export type VaultKnowledgeRead = {
+  view: OpenVaultView;
+  review: SpectroliteReviewReport;
+};
+export type VaultKnowledgeOutcome =
+  | "authority-confirmed" | "conflict-unresolved" | "retired-link"
+  | "draft-differs" | "preview-confirmed" | "preview-unavailable"
+  | "edited" | "handoff-staged" | "handoff-held";
+export type VaultKnowledgeStep =
+  | { kind: "follow"; target: string }
+  | { kind: "read"; checks: ("document" | "preview" | "revision")[] }
+  | { kind: "revise"; source: string }
+  | { kind: "handoff"; audience: string }
+  | { kind: "finish" };
+export type VaultKnowledgeHandoff = {
+  audience: string;
+  path: string;
+  revision: string;
+  plan: VaultHandoffPlan;
+  receipt: string;
+};
+export type VaultKnowledgeReport = {
+  path: string;
+  revision: string;
+  outcome: VaultKnowledgeOutcome;
+  authorityPath: string | null;
+  reads: VaultKnowledgeRead[];
+  answer: string;
+  handoff: VaultKnowledgeHandoff | null;
+};

@@ -1,6 +1,9 @@
 import type { SpectroliteReviewRequest } from "./types.js";
 
 declare module "natlang:services" {
+  export const vaultKnowledgeHandoff: {
+    stage(revision: string, audience: string, plan: import("./types.js").VaultHandoffPlan): Promise<import("./types.js").VaultKnowledgeHandoff | null>;
+  };
   export const spectroliteHandoffRead: {
     evidence(): Promise<import("./types.js").VaultHandoffEvidence>;
   };

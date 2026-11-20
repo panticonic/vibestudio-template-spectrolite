@@ -4,7 +4,8 @@
   "type": "module",
   "exports": {
     "./live": "./live.ts",
-    "./open-goal": "./open-goal.ts"
+    "./open-goal": "./open-goal.ts",
+    "./knowledge-managed": "./knowledge-managed.ts"
   },
   "devDependencies": {
     "@workspace/natlang": "workspace:*",
