@@ -146,3 +146,19 @@ export type LiveVaultRequest = {
 export type SpectroliteWorkflowRequest =
   | SpectroliteReviewRequest
   | LiveVaultRequest;
+
+export type OpenVaultView = {
+  path: string;
+  revision: string;
+  source: string;
+  visible: string;
+  links: { target: string; path: string | null }[];
+};
+export type OpenVaultDecision =
+  | { kind: "follow"; target: string }
+  | { kind: "revise"; source: string }
+  | { kind: "review"; checks: ("document" | "preview" | "navigation" | "revision")[] }
+  | { kind: "blocked"; reason: string };
+export type OpenVaultReport =
+  | { status: "reviewed" | "edited"; path: string; revision: string; review: SpectroliteReviewReport }
+  | { status: "blocked"; reason: string };

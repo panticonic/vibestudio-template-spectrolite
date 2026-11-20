@@ -146,5 +146,18 @@ type LiveVaultRequest = {
 };
 type SpectroliteWorkflowRequest = | SpectroliteReviewRequest
   | LiveVaultRequest;
+type OpenVaultView = {
+  path: string;
+  revision: string;
+  source: string;
+  visible: string;
+  links: { target: string; path: string | null }[];
+};
+type OpenVaultDecision = | { kind: "follow"; target: string }
+  | { kind: "revise"; source: string }
+  | { kind: "review"; checks: ("document" | "preview" | "navigation" | "revision")[] }
+  | { kind: "blocked"; reason: string };
+type OpenVaultReport = | { status: "reviewed" | "edited"; path: string; revision: string; review: SpectroliteReviewReport }
+  | { status: "blocked"; reason: string };
 declare const fn: NatlangFunction<[request: { goal: string; path: string }], VaultHandoffPlan> & { readonly chooseHandoff: NatlangFunction<[path: string, evidence: VaultHandoffEvidence], VaultHandoffPlan> };
 export default fn;

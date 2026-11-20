@@ -3,13 +3,15 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./live": "./live.ts"
+    "./live": "./live.ts",
+    "./open-goal": "./open-goal.ts"
   },
   "devDependencies": {
     "@workspace/natlang": "workspace:*",
     "vitest": "^3.2.7"
   },
   "dependencies": {
+    "@vibestudio/content-addressing": "workspace:*",
     "@workspace/runtime": "workspace:*",
     "@workspace/testkit": "workspace:*",
     "@workspace-panels/spectrolite": "workspace:*"

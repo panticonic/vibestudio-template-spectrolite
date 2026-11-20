@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "serviceBinding": "explicit",
   "serviceScopes": {
+    "spectroliteGoal": ["workTowardVaultGoal.nl", "workTowardVaultGoal/reviewCurrentVault.nl"],
     "spectroliteRead": ["reviewSpectrolite/reviewLiveVault/readVault.nl"],
     "spectroliteHandoffRead": ["planVaultHandoff.nl"]
   },
