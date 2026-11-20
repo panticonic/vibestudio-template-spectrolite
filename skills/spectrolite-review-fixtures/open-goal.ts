@@ -51,7 +51,11 @@ const readEditor = `() => {
 const stateRef = ({ kind, id }: { kind: "event" | "application"; id: string }) =>
   kind === "event" ? { kind, eventId: id } : { kind, applicationId: id };
 
-export async function prepareOpenSpectroliteGoal({ contextId, caseId, panelId }: Inputs, world: OpenSpectroliteScene) {
+export async function prepareOpenSpectroliteGoal(
+  { contextId, caseId, panelId }: Inputs,
+  world: OpenSpectroliteScene,
+  { beforeWrite }: { beforeWrite?: () => Promise<void> } = {},
+) {
   if (world.id !== caseId || !panelId) throw new Error("The Spectrolite goal needs its owned scene and editor");
   const { goal, expected } = world;
   const panel = panelTree.get(panelId);
@@ -106,6 +110,7 @@ export async function prepareOpenSpectroliteGoal({ contextId, caseId, panelId }:
   const inspections: Awaited<ReturnType<typeof observe>>[] = [];
   let latestEvidence: Awaited<ReturnType<typeof evidence>> | undefined;
   let busy = false;
+  const revisionAttempts: { revision: string; outcome: string }[] = [];
   async function currentRevision(revision: string) {
     if (inspections.at(-1)?.view.revision !== revision) return null;
     const current = await observe();
@@ -177,10 +182,14 @@ export async function prepareOpenSpectroliteGoal({ contextId, caseId, panelId }:
         busy = true;
         try {
           const current = await currentRevision(revision);
-          if (!current) return "changed";
+          if (!current) {
+            revisionAttempts.push({ revision, outcome: "changed" });
+            return "changed";
+          }
           const { view, vault, document, working } = current;
           if (view.path !== world.writablePath || typeof source !== "string" || source === view.source ||
               source.length > 16_000 || writes.length) return "unavailable";
+          await beforeWrite?.();
           let edited;
           try {
             edited = await vcs.edit({
@@ -189,7 +198,10 @@ export async function prepareOpenSpectroliteGoal({ contextId, caseId, panelId }:
                 edits: [{ start: 0, end: view.source.length, text: source }] }],
             });
           } catch (error) {
-            if (!isDeepStrictEqual((await vcs.status({ contextId })).workingHead, working)) return "changed";
+            if (!isDeepStrictEqual((await vcs.status({ contextId })).workingHead, working)) {
+              revisionAttempts.push({ revision, outcome: "changed" });
+              return "changed";
+            }
             throw error;
           }
           const saved = await vcs.readFile({ state: edited.workingHead, repositoryId: vault.repositoryId,
@@ -212,6 +224,7 @@ export async function prepareOpenSpectroliteGoal({ contextId, caseId, panelId }:
               { cause: error },
             );
           }
+          revisionAttempts.push({ revision, outcome: "written" });
           return "written";
         } finally {
           busy = false;
@@ -282,7 +295,7 @@ export async function prepareOpenSpectroliteGoal({ contextId, caseId, panelId }:
         initial.mainEventId === status.mainEventId && isDeepStrictEqual(committedFiles, world.files),
     };
     return { passed: Object.values(checks).every(Boolean), contextId, caseId, panelId, goal, checks,
-      observations, hops, writes, final: { path: final.view.path, revision: final.view.revision, binding: final.binding },
+      observations, hops, writes, revisionAttempts, final: { path: final.view.path, revision: final.view.revision, binding: final.binding },
       committedFiles, workingFiles };
   }
 
@@ -299,7 +312,7 @@ export async function prepareOpenSpectroliteGoal({ contextId, caseId, panelId }:
     throw new Error("Unsupported Spectrolite finding");
   }
 
-  async function qualify() {
+  async function reference() {
     let current = await services.spectroliteGoal.inspect();
     for (const { target } of expected.route) {
       if (await services.spectroliteGoal.follow(target, current.revision) !== "followed")
@@ -307,8 +320,12 @@ export async function prepareOpenSpectroliteGoal({ contextId, caseId, panelId }:
       current = await services.spectroliteGoal.inspect();
     }
     if (expected.editedSource !== undefined) {
-      if (await services.spectroliteGoal.revise(current.revision, expected.editedSource) !== "written")
-        throw new Error("The reference draft could not be persisted");
+      let revision = await services.spectroliteGoal.revise(current.revision, expected.editedSource);
+      if (revision === "changed") {
+        current = await services.spectroliteGoal.inspect();
+        revision = await services.spectroliteGoal.revise(current.revision, expected.editedSource);
+      }
+      if (revision !== "written") throw new Error("The reference draft could not be persisted");
       current = await services.spectroliteGoal.inspect();
     }
     const data = await services.spectroliteGoal.evidence(expected.findings.map(([check]) => check));
@@ -322,10 +339,11 @@ export async function prepareOpenSpectroliteGoal({ contextId, caseId, panelId }:
         check === "navigation" ? data.navigation?.id : check === "revision" ? data.committedDocument?.id : null].filter(Boolean),
       });
     });
-    return verify({ status: "workspace-skill-reviewed", skill: "spectrolite", outcome: {
+    const outcome = {
       status: expected.editedSource === undefined ? "reviewed" : "edited",
       path: current.path, revision: current.revision, review: { findings },
-    } });
+    };
+    return { outcome, verification: await verify({ status: "workspace-skill-reviewed", skill: "spectrolite", outcome }) };
   }
-  return { goal, services, verify, qualify };
+  return { goal, services, verify, reference, qualify: async () => (await reference()).verification };
 }
