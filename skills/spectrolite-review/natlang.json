@@ -4,7 +4,8 @@
   "version": "0.1.0",
   "serviceBinding": "explicit",
   "serviceScopes": {
-    "spectroliteRead": ["reviewSpectrolite/reviewLiveVault/readVault.nl"]
+    "spectroliteRead": ["reviewSpectrolite/reviewLiveVault/readVault.nl"],
+    "spectroliteHandoffRead": ["planVaultHandoff.nl"]
   },
   "targets": { "main": { "entry": "reviewSpectrolite.nl" } }
 }

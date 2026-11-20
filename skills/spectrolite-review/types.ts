@@ -49,6 +49,18 @@ export type PublishReviewReceipt = {
   lastError: string | null;
 };
 export type NavigationHop = { from: string; target: string; to: string };
+export type VaultHandoffEvidence = {
+  vault: VaultReviewState;
+  document: DocumentReviewReceipt;
+  committedDocument: DocumentReviewReceipt | null;
+  preview: PreviewReviewReceipt | null;
+};
+export type VaultHandoffPlan = {
+  disposition: "committed-review" | "draft-only" | "hold";
+  ref: VaultReference | null;
+  contentHash: string | null;
+  evidenceIds: string[];
+};
 export type NavigationReceipt = {
   id: string;
   hops: NavigationHop[];

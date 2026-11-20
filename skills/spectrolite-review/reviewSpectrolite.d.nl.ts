@@ -53,6 +53,18 @@ type PublishReviewReceipt = {
   lastError: string | null;
 };
 type NavigationHop = { from: string; target: string; to: string };
+type VaultHandoffEvidence = {
+  vault: VaultReviewState;
+  document: DocumentReviewReceipt;
+  committedDocument: DocumentReviewReceipt | null;
+  preview: PreviewReviewReceipt | null;
+};
+type VaultHandoffPlan = {
+  disposition: "committed-review" | "draft-only" | "hold";
+  ref: VaultReference | null;
+  contentHash: string | null;
+  evidenceIds: string[];
+};
 type NavigationReceipt = {
   id: string;
   hops: NavigationHop[];

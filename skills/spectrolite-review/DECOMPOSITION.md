@@ -28,3 +28,9 @@ then assesses whether the working document differs from the committed copy.
 The publication reviewer can report uncommitted working-copy edits from VCS
 even when no publication was attempted. The root can combine both findings
 with link, navigation and rendering checks in the caller's requested order.
+## Revision handoff
+
+`planVaultHandoff` reads the revision and preview receipts from the completed
+vault inspection. `chooseHandoff` checks their identity and decides whether the
+handoff can reference the committed event or should identify the working copy
+as a draft. The caller supplies the receipts and verifies the selected revision.

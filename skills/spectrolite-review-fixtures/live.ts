@@ -11,6 +11,8 @@ import type {
   ReviewCode,
   SpectroliteReviewRequest,
   SpectroliteReviewReport,
+  VaultHandoffEvidence,
+  VaultHandoffPlan,
 } from "../spectrolite-review/types.js";
 
 type BrowserRead = {
@@ -352,5 +354,114 @@ export function prepareSpectroliteReview(
     services: { spectroliteRead: { observe } },
     reference,
     verify,
+  };
+}
+
+export function prepareSpectroliteHandoff(
+  review: ReturnType<typeof prepareSpectroliteReview>,
+  work: readonly [
+    { kind: "domain"; domain: string; operation: string },
+    { kind: "domain"; domain: string; operation: string },
+  ],
+  disposition: "committed-review" | "draft-only",
+) {
+  let transferred: VaultHandoffEvidence | undefined;
+  async function evidence() {
+    const { observed } = review.verify(null);
+    if (
+      !observed?.document ||
+      transferred ||
+      !review.verify(review.reference()).passed
+    )
+      throw new Error(
+        "Read handoff evidence once after verifying the assigned vault and editor",
+      );
+    transferred = structuredClone({
+      vault: observed.vault,
+      document: observed.document,
+      committedDocument: observed.committedDocument ?? null,
+      preview: observed.preview,
+    });
+    return structuredClone(transferred);
+  }
+  function expected(receipt: VaultHandoffEvidence): VaultHandoffPlan {
+    return {
+      disposition,
+      ref: receipt.document.ref,
+      contentHash: receipt.document.contentHash,
+      evidenceIds: [
+        receipt.vault.id,
+        receipt.document.id,
+        receipt.committedDocument!.id,
+        receipt.preview!.id,
+      ],
+    };
+  }
+  function verify(value: unknown) {
+    const result = value as { results?: { report: unknown }[] } | null;
+    const vault = review.verify(
+      (result?.results?.[0]?.report ?? null) as SpectroliteReviewReport | null,
+    );
+    const plan = result?.results?.[1]?.report as VaultHandoffPlan | undefined;
+    const wanted =
+      transferred?.committedDocument && transferred.preview
+        ? expected(transferred)
+        : null;
+    const checks = {
+      verifiedVault: vault.passed,
+      exactHandoff:
+        !!wanted &&
+        plan?.disposition === wanted.disposition &&
+        plan.contentHash === wanted.contentHash &&
+        plan.ref?.kind === wanted.ref?.kind &&
+        plan.ref?.id === wanted.ref?.id &&
+        JSON.stringify(plan.evidenceIds) === JSON.stringify(wanted.evidenceIds),
+    };
+    return {
+      passed: Object.values(checks).every(Boolean),
+      checks,
+      vault,
+      transferred,
+    };
+  }
+  return {
+    request: {
+      goal:
+        review.request.goal +
+        " Complete the vault inspection before planning the handoff.",
+      work: [
+        { ...work[0], input: review.request },
+        {
+          ...work[1],
+          input: { goal: review.request.goal, path: review.request.path },
+        },
+      ],
+    },
+    services: { ...review.services, spectroliteHandoffRead: { evidence } },
+    verify,
+    async qualify() {
+      const earlyDenied = await evidence().then(
+        () => false,
+        () => true,
+      );
+      await review.services.spectroliteRead.observe();
+      const receipt = await evidence();
+      const report = review.reference();
+      const plan = expected(receipt);
+      const withPlan = (candidate: VaultHandoffPlan) => ({
+        results: [{ report }, { report: candidate }],
+      });
+      return {
+        verification: verify(withPlan(plan)),
+        rejectedDifferentRevision:
+          earlyDenied &&
+          !verify(
+            withPlan({
+              ...plan,
+              ref: { kind: "event", id: "another-revision" },
+            }),
+          ).passed,
+      };
+    },
   };
 }
