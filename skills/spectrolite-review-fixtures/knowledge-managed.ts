@@ -394,13 +394,14 @@ export async function prepareVaultKnowledge(
         report?.path === final.view.path &&
         report.revision === final.view.revision,
       joinedNativeKnowledge:
-        report?.reads.length === readSteps.length &&
+        Array.isArray(report?.reads) && report.reads.length === readSteps.length &&
         receipts.length === readSteps.length &&
         receipts.every(({ view, evidence }, index) => {
           const row = report.reads[index];
           return (
             row &&
             isDeepStrictEqual(row.view, view) &&
+            Array.isArray(row.review?.findings) &&
             row.review.findings.length === readSteps[index]?.findings.length &&
             readSteps[index].findings.every(([check, code], offset) => {
               const finding = row.review.findings[offset];
@@ -409,7 +410,8 @@ export async function prepareVaultKnowledge(
                 finding.code === code &&
                 finding.code === codes(evidence, check) &&
                 isDeepStrictEqual(finding.evidenceIds, ids(evidence, check)) &&
-                Boolean(finding.detail?.trim()) &&
+                typeof finding.detail === "string" &&
+                Boolean(finding.detail.trim()) &&
                 (!(code === "compile-error" || code === "render-error") ||
                   Boolean(
                     evidence.preview?.detail &&

@@ -68,28 +68,34 @@ export async function prepareOpenSpectroliteGoal(
   const initial = await vcs.status({ contextId });
   const hops: (typeof expected.route)[number][] = [];
   const writes: { path: string; from: string; toSourceHash: string }[] = [];
-  async function observePanel(awaitedPath?: string) {
+  async function ownedPanelIdentity() {
     const identity = await panel.observe();
     if (identity.kind !== "workspace" || identity.contextId !== contextId ||
         identity.requestedRef !== `ctx:${contextId}` || identity.source !== openSpectrolitePanel)
       throw new Error("Spectrolite panel belongs to another workspace");
-    const session = await panel.cdp.session();
-    try {
-      const read = await waitFor(async () => {
-        const actual = await session.page.evaluate<BrowserRead | null>(`(${readEditor})()`);
-        return actual?.text.trim() && (!awaitedPath || actual.path === awaitedPath) &&
-          !actual.preview.some(({ phase }) => phase === "pending") ? actual : undefined;
-      }, { label: "Read the owned Spectrolite document and its settled preview" });
-      const current = await panel.observe();
-      const binding = session.receipt;
-      if (!binding || binding.generation.panelId !== panelId ||
-          binding.generation.attemptId !== identity.attemptId || binding.generation.buildKey !== identity.buildKey ||
-          current.attemptId !== identity.attemptId || current.buildKey !== identity.buildKey)
-        throw new Error("The Spectrolite renderer changed while reading");
-      return { read, binding };
-    } finally {
-      await session.close();
-    }
+    return identity;
+  }
+
+  async function observePanel(awaitedPath?: string) {
+    await ownedPanelIdentity();
+    return waitFor(async () => {
+      const identity = await ownedPanelIdentity();
+      const session = await panel.cdp.session();
+      try {
+        const read = await session.page.evaluate<BrowserRead | null>(`(${readEditor})()`);
+        if (!read?.text.trim() || (awaitedPath && read.path !== awaitedPath) ||
+            read.preview.some(({ phase }) => phase === "pending")) return undefined;
+        const current = await ownedPanelIdentity();
+        const binding = session.receipt;
+        if (!binding || binding.generation.panelId !== panelId ||
+            binding.generation.attemptId !== identity.attemptId || binding.generation.buildKey !== identity.buildKey ||
+            current.attemptId !== identity.attemptId || current.buildKey !== identity.buildKey)
+          throw new Error("The Spectrolite renderer changed while reading");
+        return { read, binding };
+      } finally {
+        await session.close();
+      }
+    }, { label: "Read the owned Spectrolite document and its settled preview" });
   }
 
   async function observe(awaitedPath?: string) {
@@ -270,7 +276,7 @@ export async function prepareOpenSpectroliteGoal(
           check === "revision" ? receipts.committedDocument?.id : null,
       ].filter(Boolean) : [];
     }
-    const selected = Array.isArray(findings) ? new Map(findings.map(finding => [finding.check, finding])) : new Map<string, Finding>();
+    const selected = Array.isArray(findings) ? new Map(findings.filter(finding => typeof finding?.check === "string").map(finding => [finding.check, finding])) : new Map<string, Finding>();
     const checks = {
       originalSpectroliteEditor: observations[0]?.path === world.openPath && observations.every(({ binding }) =>
         isDeepStrictEqual(binding.generation, final.binding.generation)),

@@ -1,5 +1,6 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import { prepareOpenSpectroliteGoal, type OpenSpectroliteScene } from "./open-goal.js";
+import { prepareVaultKnowledge } from "./knowledge-managed.js";
 
 const unresolved: OpenSpectroliteScene = {
   id: "check-catalog-link-before-print", goal: "Check the link.", openPath: "Catalog Withdrawal.mdx",
@@ -21,16 +22,26 @@ const state = vi.hoisted(() => ({
   source: {} as Record<string, string>,
   actions: [] as string[],
   contextId: "context",
+  replaceDuringRead: false,
+  closedAttempts: [] as string[],
 }));
 const ref = { kind: "event", eventId: "commit" };
 vi.mock("@workspace/testkit", () => ({
   waitFor: async (fn: () => Promise<unknown>) => {
-    const value = await fn();
-    if (value === undefined) throw new Error("No stable observation");
-    return value;
+    let failure: unknown;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const value = await fn();
+        if (value !== undefined) return value;
+      } catch (error) {
+        failure = error;
+      }
+    }
+    throw failure ?? new Error("No stable observation");
   },
 }));
 vi.mock("@workspace/runtime", () => ({
+  fs: {},
   vcs: {
     status: async () => ({ mainEventId: "main", workingHead: ref, committed: ref }),
     readFile: async ({ file }: { file: { path: string } }) => ({
@@ -40,21 +51,29 @@ vi.mock("@workspace/runtime", () => ({
   panelTree: { get: () => ({
     observe: async () => ({ ...state.generation, kind: "workspace", contextId: state.contextId,
       requestedRef: "ctx:context", source: "panels/spectrolite" }),
-    cdp: { session: async () => ({
-      receipt: { generation: state.generation },
-      close: async () => {},
-      page: { evaluate: async (expression: string) => {
-        if (expression.includes("link.click()")) {
-          const to = Object.keys(state.source).find(path => path !== state.path && expression.includes(`getAttribute('title') === ${JSON.stringify(path)}`));
-          if (!to) return false;
-          state.actions.push(to);
-          state.path = to;
-          return true;
-        }
-        return { path: state.path, text: state.source[state.path], preview: [],
-          links: links(state.path).map(({ target, resolvedPath }) => ({ target, title: resolvedPath ?? `Click to create [[${target}]]` })) };
-      } },
-    }) },
+    cdp: { session: async () => {
+      const generation = state.generation;
+      return {
+        receipt: { generation },
+        close: async () => { state.closedAttempts.push(generation.attemptId); },
+        page: { evaluate: async (expression: string) => {
+          if (state.replaceDuringRead) {
+            state.replaceDuringRead = false;
+            state.generation = { ...generation, attemptId: "replacement" };
+            return { path: state.path, text: "stale renderer text", preview: [], links: [] };
+          }
+          if (expression.includes("link.click()")) {
+            const to = Object.keys(state.source).find(path => path !== state.path && expression.includes(`getAttribute('title') === ${JSON.stringify(path)}`));
+            if (!to) return false;
+            state.actions.push(to);
+            state.path = to;
+            return true;
+          }
+          return { path: state.path, text: state.source[state.path], preview: [],
+            links: links(state.path).map(({ target, resolvedPath }) => ({ target, title: resolvedPath ?? `Click to create [[${target}]]` })) };
+        } },
+      };
+    } },
   }) },
 }));
 
@@ -73,7 +92,13 @@ vi.mock("@workspace-panels/spectrolite/review-evidence", () => ({
   projectDocumentReviewReceipt: () => null,
 }));
 
-beforeEach(() => { state.actions = []; state.contextId = "context"; });
+beforeEach(() => {
+  state.actions = [];
+  state.contextId = "context";
+  state.generation = { ...state.generation, attemptId: "attempt" };
+  state.replaceDuringRead = false;
+  state.closedAttempts = [];
+});
 async function useWorld(world: OpenSpectroliteScene) {
   state.path = world.openPath;
   state.source = { ...world.files };
@@ -108,4 +133,33 @@ it("rejects a panel owned by another context", async () => {
   const prepared = await useWorld(unresolved);
   state.contextId = "foreign";
   await expect(prepared.services.spectroliteGoal.inspect()).rejects.toThrow("another workspace");
+});
+
+
+it("discards a renderer observation when its generation changes during the read", async () => {
+  const prepared = await useWorld(unresolved);
+  state.replaceDuringRead = true;
+  const view = await prepared.services.spectroliteGoal.inspect();
+  expect(view.path).toBe(unresolved.openPath);
+  expect(view.links.map(link => link.target)).toEqual(["Withdrawn Collections Ruling"]);
+  expect(state.closedAttempts).toEqual(["attempt", "replacement"]);
+});
+
+
+it("fails incomplete vault knowledge results while independently checking native state", async () => {
+  state.path = unresolved.openPath;
+  state.source = { ...unresolved.files };
+  const prepared = await prepareVaultKnowledge({ contextId: "context", caseId: unresolved.id, panelId: "panel" }, {
+    ...unresolved,
+    kind: "vaultWork",
+    workspace: "spectrolite",
+    sourceGroup: "incomplete-result",
+    expected: {
+      steps: [{ kind: "read", path: unresolved.openPath, findings: [["document", "broken-link"]] }],
+      path: unresolved.openPath, outcome: "retired-link", citations: ["Withdrawn Collections Ruling"],
+    },
+  });
+  const proof = await prepared.verify({ status: "workspace-skill-reviewed", skill: "vaultWork", outcome: {} });
+  expect(proof.passed).toBe(false);
+  expect(proof.checks).toMatchObject({ joinedNativeKnowledge: false, independentVaultReadback: true });
 });
