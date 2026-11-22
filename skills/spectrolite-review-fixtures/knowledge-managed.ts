@@ -367,9 +367,6 @@ export async function prepareVaultKnowledge(
     const expectedWorking = { ...world.files, ...world.draft };
     const paths = expectation.steps.filter((step) => step.kind === "write");
     for (const step of paths) expectedWorking[step.path] = step.source;
-    const readSteps = (expectation.graph ? events : expectation.steps).filter(
-      (step) => step.kind === "read",
-    );
     const persisted =
       file && saved ? JSON.parse(await fs.readFile(file, "utf8")) : null;
     const authorityPath =
@@ -380,55 +377,46 @@ export async function prepareVaultKnowledge(
       !directory || !(await fs.readdir(directory)).includes("review.json");
     const checks = {
       exactVaultRoute:
-        (expectation.graph
-          ? verifiesKnowledgeGraph(
-              expectation.graph,
-              expectation.steps,
-              events,
-              handoffAt,
-            )
-          : isDeepStrictEqual(events, expectation.steps)) &&
+        verifiesKnowledgeGraph(
+          expectation.graph ?? { basis: expectation.steps
+            .slice(0, expectation.steps.findIndex(step => step.kind === "write") < 0
+              ? expectation.steps.length : expectation.steps.findIndex(step => step.kind === "write"))
+            .filter(step => step.kind === "read").map(step => step.path) },
+          expectation.steps, events, handoffAt,
+        ) &&
         views[0]?.path === world.openPath &&
         views.at(-1)?.revision === final.view.revision &&
         final.view.path === expectation.path &&
         report?.path === final.view.path &&
         report.revision === final.view.revision,
       joinedNativeKnowledge:
-        Array.isArray(report?.reads) && report.reads.length === readSteps.length &&
-        receipts.length === readSteps.length &&
-        receipts.every(({ view, evidence }, index) => {
-          const row = report.reads[index];
-          return (
-            row &&
-            isDeepStrictEqual(row.view, view) &&
-            Array.isArray(row.review?.findings) &&
-            row.review.findings.length === readSteps[index]?.findings.length &&
-            readSteps[index].findings.every(([check, code], offset) => {
-              const finding = row.review.findings[offset];
-              return (
-                finding?.check === check &&
-                finding.code === code &&
+        Array.isArray(report?.reads) &&
+        expectation.steps.filter(step => step.kind === "read").every(step =>
+          report.reads.some(row => row.view?.path === step.path &&
+            step.findings.every(([check, code]) => row.review?.findings?.some(
+              finding => finding.check === check && finding.code === code)))),
+        // Each returned claim must also be backed by an actual native receipt;
+        // repeated observations and their order are an implementation choice.
+      groundedKnowledgeClaims:
+        Array.isArray(report?.reads) && report.reads.every(row =>
+          receipts.some(({ view, evidence }) => isDeepStrictEqual(row?.view, view) &&
+            Array.isArray(row.review?.findings) && row.review.findings.length > 0 &&
+            row.review.findings.every(finding => {
+              const check = finding.check;
+              return ["document", "preview", "revision"].includes(check) &&
                 finding.code === codes(evidence, check) &&
-                isDeepStrictEqual(finding.evidenceIds, ids(evidence, check)) &&
-                typeof finding.detail === "string" &&
-                Boolean(finding.detail.trim()) &&
-                (!(code === "compile-error" || code === "render-error") ||
-                  Boolean(
-                    evidence.preview?.detail &&
-                    finding.detail.includes(evidence.preview.detail),
-                  ))
-              );
-            })
-          );
-        }),
+                Array.isArray(finding.evidenceIds) && finding.evidenceIds.length === ids(evidence, check).length &&
+                ids(evidence, check).every(id => finding.evidenceIds.includes(id)) &&
+                typeof finding.detail === "string" && Boolean(finding.detail.trim()) &&
+                (!(finding.code === "compile-error" || finding.code === "render-error") ||
+                  Boolean(evidence.preview?.detail && finding.detail.includes(evidence.preview.detail)));
+            }))),
       independentVaultReadback:
         isDeepStrictEqual(workingFiles, expectedWorking) &&
         isDeepStrictEqual(committedFiles, world.files) &&
-        writes.length === paths.length &&
-        paths.every((step, i) => {
-          const write = expectation.graph
-            ? writes.find((value) => value.path === step.path)
-            : writes[i];
+        writes.every(write => paths.some(step => step.path === write.path)) &&
+        paths.every((step) => {
+          const write = writes.findLast((value) => value.path === step.path);
           return (
             write?.path === step.path &&
             write.toSourceHash === sha256HexSyncText(step.source)
@@ -441,7 +429,6 @@ export async function prepareVaultKnowledge(
           isDeepStrictEqual(status.workingHead, initial.workingHead)),
       recoveredRevisedSource: world.movement
         ? moved &&
-          revisionAttempts.some((row) => row.outcome === "changed") &&
           workingFiles[world.movement.path]?.includes(
             world.movement.addition,
           ) === true

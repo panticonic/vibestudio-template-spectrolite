@@ -44,6 +44,10 @@ vi.mock("@workspace/runtime", () => ({
   fs: {},
   vcs: {
     status: async () => ({ mainEventId: "main", workingHead: ref, committed: ref }),
+    edit: async ({ changes }: { changes: { fileId: string; edits: { text: string }[] }[] }) => {
+      for (const change of changes) state.source[change.fileId] = change.edits[0]!.text;
+      return { workingHead: ref, changeIds: ["edit"] };
+    },
     readFile: async ({ file }: { file: { path: string } }) => ({
       fileId: file.path, content: { kind: "text", text: state.source[file.path] },
     }),
@@ -162,4 +166,28 @@ it("fails incomplete vault knowledge results while independently checking native
   const proof = await prepared.verify({ status: "workspace-skill-reviewed", skill: "vaultWork", outcome: {} });
   expect(proof.passed).toBe(false);
   expect(proof.checks).toMatchObject({ joinedNativeKnowledge: false, independentVaultReadback: true });
+});
+
+it("accepts exploratory navigation while requiring the selected link and final native state", async () => {
+  const world = { ...alias, files: { ...alias.files,
+    "records/Accession Intake.mdx": "Plain instructions. Return to [[Archive Index]]." } };
+  const prepared = await useWorld(world);
+  const { spectroliteGoal } = prepared.services;
+  const start = await spectroliteGoal.inspect();
+  expect(await spectroliteGoal.follow("Accession Intake", start.revision)).toBe("followed");
+  const target = await spectroliteGoal.inspect();
+  expect(await spectroliteGoal.follow("Archive Index", target.revision)).toBe("followed");
+  expect((await prepared.qualify()).passed).toBe(true);
+  expect(state.actions).toEqual(["records/Accession Intake.mdx", "Archive Index.mdx", "records/Accession Intake.mdx"]);
+});
+
+it("supports revising an authorized document iteratively with fresh native evidence", async () => {
+  const prepared = await useWorld({ ...unresolved, writablePath: unresolved.openPath });
+  const { spectroliteGoal } = prepared.services;
+  const before = await spectroliteGoal.inspect();
+  expect(await spectroliteGoal.revise(before.revision, "Intermediate revision.")).toBe("written");
+  expect(await spectroliteGoal.revise(before.revision, "Stale overwrite.")).toBe("changed");
+  const after = await spectroliteGoal.inspect();
+  expect(await spectroliteGoal.revise(after.revision, "Final revision.")).toBe("written");
+  expect(state.source[unresolved.openPath]).toBe("Final revision.");
 });

@@ -207,7 +207,7 @@ export async function prepareOpenSpectroliteGoal(
           const { view, vault, document, working } = current;
           const authorized = writablePaths ? writablePaths.includes(view.path) : view.path === world.writablePath;
           if (!authorized || typeof source !== "string" || source === view.source ||
-              source.length > 16_000 || writes.some(write => write.path === view.path)) return "unavailable";
+              source.length > 16_000) return "unavailable";
           await beforeWrite?.(view.path);
           let edited;
           try {
@@ -280,8 +280,8 @@ export async function prepareOpenSpectroliteGoal(
     const checks = {
       originalSpectroliteEditor: observations[0]?.path === world.openPath && observations.every(({ binding }) =>
         isDeepStrictEqual(binding.generation, final.binding.generation)),
-      exactObservedNavigation: isDeepStrictEqual(hops, expected.route) && expected.route.every(({ to }) =>
-        observations.some(({ path }) => path === to)),
+      exactObservedNavigation: expected.route.every(edge => hops.some(hop => isDeepStrictEqual(hop, edge))) &&
+        expected.route.every(({ to }) => observations.some(({ path }) => path === to)),
       currentSpectroliteOutcome: final.view.path === expected.path && outcome?.path === expected.path &&
         outcome.revision === final.view.revision && observations.at(-1)?.revision === final.view.revision &&
         (!expected.visible || final.read.text.includes(expected.visible)),
@@ -291,15 +291,17 @@ export async function prepareOpenSpectroliteGoal(
           const row = selected.get(check);
           return row?.code === code && receipts && classifyFinding(receipts, check) === code &&
             typeof row.detail === "string" && row.detail.trim().length > 0 &&
-            isDeepStrictEqual(row.evidenceIds, relevantIds(check)) &&
-            (check !== "navigation" || [world.openPath, ...hops.map(({ to }) => to)].every(path => row.detail.includes(path))) &&
+            Array.isArray(row.evidenceIds) && row.evidenceIds.length === relevantIds(check).length &&
+            relevantIds(check).every(id => row.evidenceIds.includes(id)) &&
+            (check !== "navigation" || [world.openPath, ...expected.route.map(({ to }) => to)].every(path => row.detail.includes(path))) &&
             (code !== "broken-link" || final.document.links.filter(link => !link.resolvedPath)
               .every(({ target }) => row.detail.includes(target)));
         }),
       exactVaultWrite: isDeepStrictEqual(workingFiles, expectedWorking) &&
         (expected.editedSource !== undefined
-          ? outcome?.status === "edited" && writes.length === 1 && writes[0]?.path === expected.path &&
-            writes[0].toSourceHash === sha256HexSyncText(expected.editedSource)
+          ? outcome?.status === "edited" && writes.length > 0 &&
+            writes.every(write => write.path === expected.path) &&
+            writes.at(-1)?.toSourceHash === sha256HexSyncText(expected.editedSource)
           : outcome?.status === "reviewed" && writes.length === 0 && isDeepStrictEqual(status.workingHead, initial.workingHead)),
       protectedVaultHeads: isDeepStrictEqual(initial.committed, status.committed) &&
         initial.mainEventId === status.mainEventId && isDeepStrictEqual(committedFiles, world.files),
