@@ -8,9 +8,9 @@
       "workOnVaultKnowledgeGoal/stageKnowledgeHandoff.nl"
     ],
     "spectroliteGoal": [
-      "workTowardVaultGoal.nl",
+      "workTowardVaultGoal.ts",
       "workTowardVaultGoal/reviewCurrentVault.nl",
-      "workOnVaultKnowledgeGoal.nl",
+      "workOnVaultKnowledgeGoal.ts",
       "workOnVaultKnowledgeGoal/readKnowledgeNote.nl"
     ],
     "spectroliteRead": [],

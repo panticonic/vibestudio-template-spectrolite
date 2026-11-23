@@ -1,0 +1,39 @@
+{
+  "publicEntries": 2,
+  "entries": [
+    {
+      "entry": "skills/spectrolite-review/workOnVaultKnowledgeGoal.ts",
+      "kind": "typed composition",
+      "rationale": "Typed native I/O, exact result composition and deterministic state transitions; scoped NL descendants interpret goals, choose actions, reconcile evidence and form requested answers.",
+      "sourceSha256": "3d1551d8d72ab76bef5a84d0b3a4f8b0dc92cf22479426fc43a08cab1f8312de"
+    },
+    {
+      "entry": "skills/spectrolite-review/workTowardVaultGoal.ts",
+      "kind": "typed composition",
+      "rationale": "Typed native I/O, exact result composition and deterministic state transitions; scoped NL descendants interpret goals, choose actions, reconcile evidence and form requested answers.",
+      "sourceSha256": "14305cd137c38ff5247ad12f3c20394c42227aa3e3fbdbc3428d1996e94f542e"
+    }
+  ],
+  "sourceConversions": [
+    {
+      "template": "spectrolite",
+      "old": "skills/spectrolite-review/workOnVaultKnowledgeGoal.nl",
+      "new": "skills/spectrolite-review/workOnVaultKnowledgeGoal.ts",
+      "originalSource": "---\ndescription: Resolve an open knowledge-work goal across the current owned Spectrolite vault.\nargs:\n  goal: string\nreturns: VaultKnowledgeReport\nbudget: { maxTurns: 52 }\n---\n1. Inspect the live editor with spectroliteGoal.inspect. Keep its exact snapshot and track ordered reads, successful writes, and the actual handoff as you work.\n2. Call chooseKnowledgeStep with the goal, current snapshot, recorded reads, paths whose writes succeeded, and whether a handoff was considered. Follow only an exact current visible link. After a follow or an edit call spectroliteGoal.inspect before deciding again. If revise returns changed, reread and reconstruct the edit from the current source with any new unrelated changes intact. A stale attempt never counts as a write.\n3. For read call readKnowledgeNote, keep its exact returned read, and continue. For a requested handoff call stageKnowledgeHandoff with that exact current revision and the audience from the goal; keep its actual result and mark it considered even when held.\n4. Once the goal is resolved, call summarizeKnowledgeWork with the goal, exact current snapshot, ordered reads, paths whose writes succeeded, and actual handoff. Pass that exact summary, current snapshot, ordered reads and actual handoff to knowledgeResult. Return its actual answer, authority path, disposition, note findings and path/revision handles. The full editor snapshots remain internal planning state.\n",
+      "classification": "typed revision-state loop; every next action, edit content and semantic result remains an actual scoped NL judgment"
+    },
+    {
+      "template": "spectrolite",
+      "old": "skills/spectrolite-review/workTowardVaultGoal.nl",
+      "new": "skills/spectrolite-review/workTowardVaultGoal.ts",
+      "originalSource": "---\ndescription: Navigate, revise, and check documents in the current Spectrolite vault.\nargs:\n  goal: string\nreturns: OpenVaultReport\nbudget: { maxTurns: 36 }\n---\n1. Call spectroliteGoal.inspect. Keep the visible editor, canonical source, revision and links it returns as the current observation. Keep previous distinct observations as evidence for this goal.\n2. Call chooseVaultStep with the goal, current observation and previous observations, and with whether a revision has been written. For follow, call spectroliteGoal.follow with the selected visible target and current revision. For revise, call spectroliteGoal.revise with the current revision and complete revised source. After either action, inspect again before deciding the next step. If the service reports a changed or unavailable result, reconsider from the new observations.\n3. For review, call reviewCurrentVault with the current observation and selected checks. Return the current path and revision and its actual findings, with status edited only when a write succeeded. For blocked return the decision's actual reason.\n",
+      "classification": "typed revision-state loop; every next action, edit content and semantic result remains an actual scoped NL judgment"
+    }
+  ],
+  "validation": {
+    "unit": "vibe-v14-local-nonbase-types-20261123c",
+    "scope": "Actual static native compilation and declaration regeneration of all38 discovered programs across six templates; no model execution or training data.",
+    "memoryPeakMiB": 287.7
+  },
+  "taskGoalsChanged": false
+}

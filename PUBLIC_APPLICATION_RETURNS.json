@@ -1,7 +1,7 @@
 [
   {
     "template": "spectrolite",
-    "entry": "skills/spectrolite-review/workOnVaultKnowledgeGoal.nl",
+    "entry": "skills/spectrolite-review/workOnVaultKnowledgeGoal.ts",
     "resultType": "VaultKnowledgeReport",
     "decision": "compact audit-only fields",
     "fields": {
@@ -14,7 +14,7 @@
       "handoff": "actual native knowledge handoff"
     },
     "evidence": [
-      "skills/spectrolite-review/workOnVaultKnowledgeGoal.nl",
+      "skills/spectrolite-review/workOnVaultKnowledgeGoal.ts",
       "skills/spectrolite-review/types.ts"
     ],
     "consumers": [
@@ -29,11 +29,12 @@
       "/home/werg/vibe-app-values-spectrolite/skills/spectrolite-review/types.ts:187:export type VaultKnowledgeReport = {",
       "/home/werg/vibe-app-values-spectrolite/skills/spectrolite-review/workOnVaultKnowledgeGoal/knowledgeResult.ts:1:import type {OpenVaultView,VaultKnowledgeRead,VaultKnowledgeHandoff,VaultKnowledgeReport,VaultKnowledgeOutcome} from \"../types.js\";",
       "/home/werg/vibe-app-values-spectrolite/skills/spectrolite-review/workOnVaultKnowledgeGoal/knowledgeResult.ts:2:export default function knowledgeResult(summary:{outcome:VaultKnowledgeOutcome;authorityPath:string|null;answer:string},current:OpenVaultView,reads:VaultKnowledgeRead[],handoff:VaultKnowledgeHandoff|null):VaultKnowledgeReport {"
-    ]
+    ],
+    "functionalStructure": "typed composition"
   },
   {
     "template": "spectrolite",
-    "entry": "skills/spectrolite-review/workTowardVaultGoal.nl",
+    "entry": "skills/spectrolite-review/workTowardVaultGoal.ts",
     "resultType": "OpenVaultReport",
     "decision": "retain requested domain value",
     "fields": {
@@ -44,7 +45,7 @@
       "reason": "requested application value"
     },
     "evidence": [
-      "skills/spectrolite-review/workTowardVaultGoal.nl",
+      "skills/spectrolite-review/workTowardVaultGoal.ts",
       "skills/spectrolite-review/types.ts"
     ],
     "consumers": [
@@ -53,6 +54,7 @@
     ],
     "nativeConsumers": [
       "/home/werg/vibe-app-values-spectrolite/skills/spectrolite-review/types.ts:162:export type OpenVaultReport ="
-    ]
+    ],
+    "functionalStructure": "typed composition"
   }
 ]
