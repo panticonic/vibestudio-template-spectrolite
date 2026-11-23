@@ -260,10 +260,8 @@ export async function prepareOpenSpectroliteGoal(
   };
 
   async function verify(value: unknown) {
-    const report = (value as { status?: string; skill?: string; outcome?: unknown } | null);
-    const outcome = report?.status === "workspace-skill-reviewed" && report.skill === "spectrolite"
-      ? report.outcome as { status?: string; path?: string; revision?: string; review?: { findings: Finding[] } }
-      : null;
+    const report = (value as unknown | null);
+    const outcome = report as { status?: string; path?: string; revision?: string; review?: { findings: Finding[] } };
     const { final, status, committedFiles, workingFiles } = await inspectNativeState();
     const expectedWorking = { ...world.files, ...world.draft };
     if (expected.editedSource !== undefined) expectedWorking[expected.path] = expected.editedSource;
@@ -358,7 +356,7 @@ export async function prepareOpenSpectroliteGoal(
       status: expected.editedSource === undefined ? "reviewed" : "edited",
       path: current.path, revision: current.revision, review: { findings },
     };
-    const verified = await verify({ status: "workspace-skill-reviewed", skill: "spectrolite", outcome });
+    const verified = await verify(outcome);
     const checks = { ...verified.checks, rejectsStaleView, rejectsLinkAlias };
     return { outcome, verification: { ...verified, checks, passed: Object.values(checks).every(Boolean) } };
   }

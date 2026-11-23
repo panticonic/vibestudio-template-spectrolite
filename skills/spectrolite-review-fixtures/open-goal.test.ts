@@ -117,10 +117,10 @@ it("reports a broken link without invoking the renderer route that would create 
   expect(await spectroliteGoal.revise(view.revision, "corrupt")).toBe("unavailable");
   expect(state.actions).toEqual([]);
   expect((await prepared.qualify()).passed).toBe(true);
-  expect((await prepared.verify({ status: "workspace-skill-reviewed", skill: "spectrolite", outcome: {
+  expect((await prepared.verify({
     status: "reviewed", path: view.path, revision: view.revision,
     review: { findings: [{ check: "document", code: "document-ready", detail: "All links resolved", evidenceIds: ["vault", "doc"] }] },
-  } })).checks.canonicalReviewFindings).toBe(false);
+  })).checks.canonicalReviewFindings).toBe(false);
 });
 
 it("binds a selected wiki alias to the resolved canonical path and rejects a stale observation", async () => {
@@ -163,7 +163,7 @@ it("fails incomplete vault knowledge results while independently checking native
       path: unresolved.openPath, outcome: "retired-link", citations: ["Withdrawn Collections Ruling"],
     },
   });
-  const proof = await prepared.verify({ status: "workspace-skill-reviewed", skill: "vaultWork", outcome: {} });
+  const proof = await prepared.verify({});
   expect(proof.passed).toBe(false);
   expect(proof.checks).toMatchObject({ joinedNativeKnowledge: false, independentVaultReadback: true });
 });

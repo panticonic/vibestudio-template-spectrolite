@@ -343,16 +343,9 @@ export async function prepareVaultKnowledge(
   }
 
   async function verify(value: unknown) {
-    const wrapper = value as {
-      status?: string;
-      skill?: string;
-      outcome?: VaultKnowledgeReport;
-    } | null;
+    const wrapper = value as VaultKnowledgeReport | null;
     const report =
-      wrapper?.status === "workspace-skill-reviewed" &&
-      wrapper.skill === world.kind
-        ? wrapper.outcome
-        : undefined;
+      wrapper;
     const {
       final,
       status,
@@ -564,17 +557,10 @@ export async function prepareVaultKnowledge(
       answer: world.expected.citations.join(" · "),
       handoff,
     };
-    const wrapper = {
-      status: "workspace-skill-reviewed",
-      skill: world.kind,
-      outcome,
-    };
+    const wrapper = outcome;
     const result = await verify(wrapper);
     const rejectsForgedResult = !(
-      await verify({
-        ...wrapper,
-        outcome: { ...outcome, answer: "unrelated claim" },
-      })
+      await verify({ ...outcome, answer: "unrelated claim" })
     ).passed;
     return {
       ...result,
