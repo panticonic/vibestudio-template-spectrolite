@@ -1,5 +1,6 @@
+import {assessObservedApplicationOutcome} from "@workspace-skills/system-testing/observed-application-outcome";
 import type {InvocationObservations} from "@workspace-skills/system-testing/observed-invocation";
-import {assessSemanticOutcome,type SemanticOutcomeContract} from "@workspace-skills/system-testing/semantic-outcome-contract";
+import type {SemanticOutcomeContract} from "@workspace-skills/system-testing/semantic-outcome-contract";
 import { isDeepStrictEqual } from "node:util";
 import { panelTree, vcs } from "@workspace/runtime";
 import { waitFor } from "@workspace/testkit";
@@ -307,10 +308,15 @@ export async function prepareOpenSpectroliteGoal(
         initial.mainEventId === status.mainEventId && isDeepStrictEqual(committedFiles, world.files),
     };
     const contract:SemanticOutcomeContract={effects:{checks:["originalSpectroliteEditor", "exactObservedNavigation", "exactVaultWrite", "protectedVaultHeads"],rationale:"Independent native observations, authority and persisted state establish application effects."},returnedValue:{checks:["currentSpectroliteOutcome", "canonicalReviewFindings"],required:expected.editedSource===undefined,rationale:"These are the actual requested domain findings or query values; mutation-only calls retain their separately observed effects."},incidentalValues:{checks:[],rationale:"Optional incorrect mutation returns are recorded against the actual invocation, without invalidating correct native effects."}};
-    const incorrectReturnValues=!contract.returnedValue.required&&contract.returnedValue.checks.some(name=>!(checks as Record<string,boolean>)[name])&&invocation ? (await invocation.returns(call=>call.parentCallId===null)).filter(row=>isDeepStrictEqual(row.value,value)).map(({definition,value})=>({definition,value,required:contract.returnedValue.required&&contract.returnedValue.checks.some(name=>!(checks as Record<string,boolean>)[name])})) : [];
-    return assessSemanticOutcome({incorrectReturnValues, passed: Object.values(checks).every(Boolean), contextId, caseId, panelId, goal, checks,
+
+    const assessed=await assessObservedApplicationOutcome({ passed: Object.values(checks).every(Boolean), contextId, caseId, panelId, goal, checks,
       observations, hops, writes, revisionAttempts, final: { path: final.view.path, revision: final.view.revision, binding: final.binding },
-      committedFiles, workingFiles },contract);
+      committedFiles, workingFiles },contract,value,invocation,[
+    {checks:["canonicalReviewFindings"],rootPath:["review"],producerSourceSuffix:"workTowardVaultGoal/reviewCurrentVault.nl"},
+    {checks:["currentSpectroliteOutcome"],rootPath:["reason"],producerSourceSuffix:"workTowardVaultGoal/chooseVaultStep.nl",producerPath:["reason"]},
+  ]);
+    const {observedChecks,...dimensions}=assessed;
+    return {...dimensions,checks:observedChecks};
   }
 
   function classifyFinding(data: Awaited<ReturnType<typeof evidence>>, check: string) {

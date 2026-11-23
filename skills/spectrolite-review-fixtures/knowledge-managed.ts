@@ -1,5 +1,6 @@
+import {assessObservedApplicationOutcome} from "@workspace-skills/system-testing/observed-application-outcome";
 import type {InvocationObservations} from "@workspace-skills/system-testing/observed-invocation";
-import {assessSemanticOutcome,type SemanticOutcomeContract} from "@workspace-skills/system-testing/semantic-outcome-contract";
+import type {SemanticOutcomeContract} from "@workspace-skills/system-testing/semantic-outcome-contract";
 import { isDeepStrictEqual } from "node:util";
 import { fs, vcs } from "@workspace/runtime";
 import { sha256HexSyncText } from "@vibestudio/content-addressing";
@@ -447,8 +448,8 @@ export async function prepareVaultKnowledge(
         : !handoffAttempt && noHandOffFile,
     };
     const contract:SemanticOutcomeContract={effects:{checks:["exactVaultRoute", "independentVaultReadback", "preservedCommittedVault", "recoveredRevisedSource", "verifiedLocalVaultHandoff"],rationale:"Independent native observations, authority and persisted state establish application effects."},returnedValue:{checks:["returnedKnowledgeIdentity", "joinedNativeKnowledge", "groundedKnowledgeClaims", "matchedKnowledgeOutcome"],required:paths.length===0,rationale:"These are the actual requested domain findings or query values; mutation-only calls retain their separately observed effects."},incidentalValues:{checks:["returnedKnowledgeHandoff"],rationale:"Optional incorrect mutation returns are recorded against the actual invocation, without invalidating correct native effects."}};
-    const incorrectReturnValues=(contract.incidentalValues!.checks.some(name=>!(checks as Record<string,boolean>)[name])||!contract.returnedValue.required&&contract.returnedValue.checks.some(name=>!(checks as Record<string,boolean>)[name]))&&invocation ? (await invocation.returns(call=>call.parentCallId===null)).filter(row=>isDeepStrictEqual(row.value,value)).map(({definition,value})=>({definition,value,required:contract.returnedValue.required&&contract.returnedValue.checks.some(name=>!(checks as Record<string,boolean>)[name])})) : [];
-    return assessSemanticOutcome({incorrectReturnValues,
+
+    const assessed=await assessObservedApplicationOutcome({
       caseId: world.id,
       goal: world.goal,
       contextId: input.contextId,
@@ -463,7 +464,13 @@ export async function prepareVaultKnowledge(
       final: final.view,
       handoff: persisted,
       passed: Object.values(checks).every(Boolean),
-    },contract);
+    },contract,value,invocation,[
+    ...(["outcome","authorityPath","answer"] as const).map(field=>({checks:["matchedKnowledgeOutcome"],rootPath:[field],producerSourceSuffix:"workOnVaultKnowledgeGoal/summarizeKnowledgeWork.nl",producerPath:[field]})),
+    ...(Array.isArray(report?.reads)?report.reads.map((_,index)=>({checks:["joinedNativeKnowledge","groundedKnowledgeClaims"],rootPath:["reads",index,"review"],producerSourceSuffix:"workOnVaultKnowledgeGoal/readKnowledgeNote.nl",producerPath:["review"]})):[]),
+    {checks:["returnedKnowledgeHandoff"],rootPath:["handoff"],producerSourceSuffix:"workOnVaultKnowledgeGoal/stageKnowledgeHandoff.nl"},
+  ]);
+    const {observedChecks,...dimensions}=assessed;
+    return {...dimensions,checks:observedChecks};
   }
 
   async function qualify(referenceSteps: readonly Step[] = world.expected.steps) {
@@ -567,6 +574,7 @@ export async function prepareVaultKnowledge(
       await verify({ ...outcome, answer: "unrelated claim" })
     ).outcomeDimensions.returnedValue.passed;
     return {
+      outcomeContract:{...result.outcomeContract,effects:{...result.outcomeContract.effects,checks:[...result.outcomeContract.effects.checks,"rejectsStale","rejectsAlias","rejectsWrongRecipient","rejectsForgedResult"]}},
       ...result,
       checks: {
         ...result.checks,
