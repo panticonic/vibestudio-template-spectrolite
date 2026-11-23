@@ -84,15 +84,13 @@ export function prepareSpectroliteReview(
   world: LiveVaultWorld,
   hops: NavigationHop[],
 ) {
-  let started = false;
+  let observationFlight: Promise<SpectroliteReviewRequest> | undefined;
   let observed: SpectroliteReviewRequest | undefined;
   let browser: BrowserRead | undefined;
   const { path, goal, checks } = world;
   const request: LiveVaultRequest = { kind: "live-vault", path, goal, checks };
 
-  async function observe() {
-    if (started) throw new Error("Read the assigned Spectrolite document once");
-    started = true;
+  async function readObservation() {
     const assigned = {
       contextId,
       repoPath,
@@ -172,6 +170,12 @@ export function prepareSpectroliteReview(
         : null,
     };
     return structuredClone(observed);
+  }
+
+  async function observe() {
+    const pending = observationFlight ??= readObservation();
+    try { return structuredClone(await pending); }
+    catch (error) { if (observationFlight === pending) observationFlight = undefined; throw error; }
   }
 
   function reference(): SpectroliteReviewReport {
@@ -371,11 +375,10 @@ export function prepareSpectroliteHandoff(
     const { observed } = review.verify(null);
     if (
       !observed?.document ||
-      transferred ||
       !review.verify(review.reference()).passed
     )
       throw new Error(
-        "Read handoff evidence once after verifying the assigned vault and editor",
+        "Read handoff evidence after verifying the assigned vault and editor",
       );
     transferred = structuredClone({
       vault: observed.vault,
