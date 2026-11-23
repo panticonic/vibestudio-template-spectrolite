@@ -183,7 +183,7 @@ type VaultKnowledgeReport = {
   revision: string;
   outcome: VaultKnowledgeOutcome;
   authorityPath: string | null;
-  reads: VaultKnowledgeRead[];
+  reads: {path:string;revision:string;review:SpectroliteReviewReport}[];
   answer: string;
   handoff: VaultKnowledgeHandoff | null;
 };

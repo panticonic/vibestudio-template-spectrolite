@@ -385,14 +385,14 @@ export async function prepareVaultKnowledge(
       joinedNativeKnowledge:
         Array.isArray(report?.reads) &&
         expectation.steps.filter(step => step.kind === "read").every(step =>
-          report.reads.some(row => row.view?.path === step.path &&
+          report.reads.some(row => row.path === step.path &&
             step.findings.every(([check, code]) => row.review?.findings?.some(
               finding => finding.check === check && finding.code === code)))),
         // Each returned claim must also be backed by an actual native receipt;
         // repeated observations and their order are an implementation choice.
       groundedKnowledgeClaims:
         Array.isArray(report?.reads) && report.reads.every(row =>
-          receipts.some(({ view, evidence }) => isDeepStrictEqual(row?.view, view) &&
+          receipts.some(({ view, evidence }) => row?.path===view.path && row.revision===view.revision &&
             Array.isArray(row.review?.findings) && row.review.findings.length > 0 &&
             row.review.findings.every(finding => {
               const check = finding.check;
@@ -553,7 +553,7 @@ export async function prepareVaultKnowledge(
         world.expected.outcome === "authority-confirmed"
           ? (world.expected.graph?.authorityPath ?? world.expected.path)
           : null,
-      reads,
+      reads:reads.map(({view,review})=>({path:view.path,revision:view.revision,review})),
       answer: world.expected.citations.join(" · "),
       handoff,
     };
