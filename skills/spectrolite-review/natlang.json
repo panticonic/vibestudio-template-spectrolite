@@ -4,10 +4,23 @@
   "version": "0.1.0",
   "serviceBinding": "explicit",
   "serviceScopes": {
-    "vaultKnowledgeHandoff": ["workOnVaultKnowledgeGoal/stageKnowledgeHandoff.nl"],
-    "spectroliteGoal": ["workTowardVaultGoal.nl", "workTowardVaultGoal/reviewCurrentVault.nl", "workOnVaultKnowledgeGoal.nl", "workOnVaultKnowledgeGoal/readKnowledgeNote.nl"],
-    "spectroliteRead": ["reviewSpectrolite/reviewLiveVault/readVault.nl"],
-    "spectroliteHandoffRead": ["planVaultHandoff.nl"]
+    "vaultKnowledgeHandoff": [
+      "workOnVaultKnowledgeGoal/stageKnowledgeHandoff.nl"
+    ],
+    "spectroliteGoal": [
+      "workTowardVaultGoal.nl",
+      "workTowardVaultGoal/reviewCurrentVault.nl",
+      "workOnVaultKnowledgeGoal.nl",
+      "workOnVaultKnowledgeGoal/readKnowledgeNote.nl"
+    ],
+    "spectroliteRead": [],
+    "spectroliteHandoffRead": [
+      "planVaultHandoff.nl"
+    ]
   },
-  "targets": { "main": { "entry": "reviewSpectrolite.nl" } }
+  "targets": {
+    "main": {
+      "entry": "reviewSpectrolite.nl"
+    }
+  }
 }

@@ -1,5 +1,3 @@
-import type { SpectroliteReviewRequest } from "./types.js";
-
 declare module "natlang:services" {
   export const vaultKnowledgeHandoff: {
     stage(revision: string, audience: string, plan: import("./types.js").VaultHandoffPlan): Promise<import("./types.js").VaultKnowledgeHandoff | null>;
@@ -11,9 +9,9 @@ declare module "natlang:services" {
     inspect(): Promise<import("./types.js").OpenVaultView>;
     follow(target: string, revision: string): Promise<"followed" | "changed" | "unavailable">;
     revise(revision: string, source: string): Promise<"written" | "changed" | "unavailable">;
-    evidence(checks: import("./types.js").ReviewCheck[]): Promise<SpectroliteReviewRequest>;
+    evidence(checks: import("./types.js").ReviewCheck[]): Promise<import("./types.js").SpectroliteReviewRequest>;
   };
   export const spectroliteRead: {
-    observe(): Promise<SpectroliteReviewRequest>;
+    observe(): Promise<import("./types.js").SpectroliteReviewRequest>;
   };
 }

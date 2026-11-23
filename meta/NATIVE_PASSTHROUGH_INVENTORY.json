@@ -1,0 +1,34 @@
+{
+  "schema": "natlang.native-passthrough-inventory/1",
+  "root": "/home/werg/data/vibestudio-open-goal-live/full-luna-campaign-yci2LB1N/rejection-audit/native-passthrough-spectrolite",
+  "rows": [
+    {
+      "path": "skills/spectrolite-review/reviewSpectrolite/reviewLiveVault/readVault.nl",
+      "line": 1,
+      "body_line": 6,
+      "source_sha256": "151cabc9427e3513f2fd74101d958a34b39e0c2e093137f5519edcb0c88bc53f",
+      "service": "spectroliteRead",
+      "method": "observe",
+      "arguments": "",
+      "status": "converted",
+      "reason": "Exact native service call, typed signature, no semantic judgment or child subtree",
+      "package": "skills/spectrolite-review",
+      "metadata": {
+        "description": "Read the caller's assigned canonical vault document and browser preview.",
+        "args": {},
+        "returns": "SpectroliteReviewRequest"
+      },
+      "output": "skills/spectrolite-review/reviewSpectrolite/reviewLiveVault/readVault.ts",
+      "generated": "import {spectroliteRead} from \"natlang:services\";\nimport type {SpectroliteReviewRequest} from \"../../types.js\";\n/** Read the caller's assigned canonical vault document and browser preview. */\nexport default async function readVault():Promise<SpectroliteReviewRequest>{\n return spectroliteRead.observe();\n}\n",
+      "source_body": "Call spectroliteRead.observe once and return the observed receipts unchanged."
+    }
+  ],
+  "verification": {
+    "compiler": "actual VibeStudio compileProgram and workspaceModules, all affected packages plus every public entry root",
+    "packages": 81,
+    "aggregate_linked_files": 3708,
+    "ledger_unit": "native-passthrough-compile-20261123c",
+    "teacher_calls": 0,
+    "runtime_capture_dependency": "Deploy with Core native-service frame recording fix; raw service frame binding is insufficient."
+  }
+}
