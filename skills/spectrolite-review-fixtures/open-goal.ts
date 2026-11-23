@@ -1,3 +1,5 @@
+import type {InvocationObservations} from "@workspace-skills/system-testing/observed-invocation";
+import {assessSemanticOutcome,type SemanticOutcomeContract} from "@workspace-skills/system-testing/semantic-outcome-contract";
 import { isDeepStrictEqual } from "node:util";
 import { panelTree, vcs } from "@workspace/runtime";
 import { waitFor } from "@workspace/testkit";
@@ -259,7 +261,7 @@ export async function prepareOpenSpectroliteGoal(
     },
   };
 
-  async function verify(value: unknown) {
+  async function verify(value: unknown,invocation?:InvocationObservations) {
     const report = (value as unknown | null);
     const outcome = report as { status?: string; path?: string; revision?: string; review?: { findings: Finding[] } };
     const { final, status, committedFiles, workingFiles } = await inspectNativeState();
@@ -280,7 +282,7 @@ export async function prepareOpenSpectroliteGoal(
         isDeepStrictEqual(binding.generation, final.binding.generation)),
       exactObservedNavigation: expected.route.every(edge => hops.some(hop => isDeepStrictEqual(hop, edge))) &&
         expected.route.every(({ to }) => observations.some(({ path }) => path === to)),
-      currentSpectroliteOutcome: final.view.path === expected.path && outcome?.path === expected.path &&
+      currentSpectroliteOutcome: outcome?.status===(expected.editedSource===undefined?"reviewed":"edited")&&final.view.path === expected.path && outcome?.path === expected.path &&
         outcome.revision === final.view.revision && observations.at(-1)?.revision === final.view.revision &&
         (!expected.visible || final.read.text.includes(expected.visible)),
       canonicalReviewFindings: Array.isArray(findings) && findings.length === expected.findings.length &&
@@ -297,16 +299,18 @@ export async function prepareOpenSpectroliteGoal(
         }),
       exactVaultWrite: isDeepStrictEqual(workingFiles, expectedWorking) &&
         (expected.editedSource !== undefined
-          ? outcome?.status === "edited" && writes.length > 0 &&
+          ? writes.length > 0 &&
             writes.every(write => write.path === expected.path) &&
             writes.at(-1)?.toSourceHash === sha256HexSyncText(expected.editedSource)
-          : outcome?.status === "reviewed" && writes.length === 0 && isDeepStrictEqual(status.workingHead, initial.workingHead)),
+          : writes.length === 0 && isDeepStrictEqual(status.workingHead, initial.workingHead)),
       protectedVaultHeads: isDeepStrictEqual(initial.committed, status.committed) &&
         initial.mainEventId === status.mainEventId && isDeepStrictEqual(committedFiles, world.files),
     };
-    return { passed: Object.values(checks).every(Boolean), contextId, caseId, panelId, goal, checks,
+    const contract:SemanticOutcomeContract={effects:{checks:["originalSpectroliteEditor", "exactObservedNavigation", "exactVaultWrite", "protectedVaultHeads"],rationale:"Independent native observations, authority and persisted state establish application effects."},returnedValue:{checks:["currentSpectroliteOutcome", "canonicalReviewFindings"],required:expected.editedSource===undefined,rationale:"These are the actual requested domain findings or query values; mutation-only calls retain their separately observed effects."},incidentalValues:{checks:[],rationale:"Optional incorrect mutation returns are recorded against the actual invocation, without invalidating correct native effects."}};
+    const incorrectReturnValues=!contract.returnedValue.required&&contract.returnedValue.checks.some(name=>!(checks as Record<string,boolean>)[name])&&invocation ? (await invocation.returns(call=>call.parentCallId===null)).filter(row=>isDeepStrictEqual(row.value,value)).map(({definition,value})=>({definition,value,required:contract.returnedValue.required&&contract.returnedValue.checks.some(name=>!(checks as Record<string,boolean>)[name])})) : [];
+    return assessSemanticOutcome({incorrectReturnValues, passed: Object.values(checks).every(Boolean), contextId, caseId, panelId, goal, checks,
       observations, hops, writes, revisionAttempts, final: { path: final.view.path, revision: final.view.revision, binding: final.binding },
-      committedFiles, workingFiles };
+      committedFiles, workingFiles },contract);
   }
 
   function classifyFinding(data: Awaited<ReturnType<typeof evidence>>, check: string) {

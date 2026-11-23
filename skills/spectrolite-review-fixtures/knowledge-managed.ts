@@ -1,3 +1,5 @@
+import type {InvocationObservations} from "@workspace-skills/system-testing/observed-invocation";
+import {assessSemanticOutcome,type SemanticOutcomeContract} from "@workspace-skills/system-testing/semantic-outcome-contract";
 import { isDeepStrictEqual } from "node:util";
 import { fs, vcs } from "@workspace/runtime";
 import { sha256HexSyncText } from "@vibestudio/content-addressing";
@@ -342,7 +344,7 @@ export async function prepareVaultKnowledge(
     };
   }
 
-  async function verify(value: unknown) {
+  async function verify(value: unknown,invocation?:InvocationObservations) {
     const wrapper = value as VaultKnowledgeReport | null;
     const report =
       wrapper;
@@ -369,6 +371,7 @@ export async function prepareVaultKnowledge(
     const noHandOffFile =
       !directory || !(await fs.readdir(directory)).includes("review.json");
     const checks = {
+      returnedKnowledgeHandoff:isDeepStrictEqual(report?.handoff,persisted),
       exactVaultRoute:
         verifiesKnowledgeGraph(
           expectation.graph ?? { basis: expectation.steps
@@ -380,8 +383,8 @@ export async function prepareVaultKnowledge(
         views[0]?.path === world.openPath &&
         views.at(-1)?.revision === final.view.revision &&
         final.view.path === expectation.path &&
-        report?.path === final.view.path &&
-        report.revision === final.view.revision,
+        true,
+      returnedKnowledgeIdentity:report?.path===final.view.path&&report?.revision===final.view.revision,
       joinedNativeKnowledge:
         Array.isArray(report?.reads) &&
         expectation.steps.filter(step => step.kind === "read").every(step =>
@@ -435,16 +438,17 @@ export async function prepareVaultKnowledge(
         ? handoffAttempt?.plan.disposition === expectation.disposition &&
           handoffAttempt.audience === world.handoff?.audience &&
           (expectation.disposition === "hold"
-            ? noHandOffFile && report?.handoff === null
+            ? noHandOffFile
             : Boolean(
                 persisted &&
-                isDeepStrictEqual(persisted, report?.handoff) &&
                 persisted.path === final.view.path &&
                 persisted.revision === final.view.revision,
               ))
-        : !handoffAttempt && noHandOffFile && report?.handoff === null,
+        : !handoffAttempt && noHandOffFile,
     };
-    return {
+    const contract:SemanticOutcomeContract={effects:{checks:["exactVaultRoute", "independentVaultReadback", "preservedCommittedVault", "recoveredRevisedSource", "verifiedLocalVaultHandoff"],rationale:"Independent native observations, authority and persisted state establish application effects."},returnedValue:{checks:["returnedKnowledgeIdentity", "joinedNativeKnowledge", "groundedKnowledgeClaims", "matchedKnowledgeOutcome"],required:paths.length===0,rationale:"These are the actual requested domain findings or query values; mutation-only calls retain their separately observed effects."},incidentalValues:{checks:["returnedKnowledgeHandoff"],rationale:"Optional incorrect mutation returns are recorded against the actual invocation, without invalidating correct native effects."}};
+    const incorrectReturnValues=(contract.incidentalValues!.checks.some(name=>!(checks as Record<string,boolean>)[name])||!contract.returnedValue.required&&contract.returnedValue.checks.some(name=>!(checks as Record<string,boolean>)[name]))&&invocation ? (await invocation.returns(call=>call.parentCallId===null)).filter(row=>isDeepStrictEqual(row.value,value)).map(({definition,value})=>({definition,value,required:contract.returnedValue.required&&contract.returnedValue.checks.some(name=>!(checks as Record<string,boolean>)[name])})) : [];
+    return assessSemanticOutcome({incorrectReturnValues,
       caseId: world.id,
       goal: world.goal,
       contextId: input.contextId,
@@ -459,7 +463,7 @@ export async function prepareVaultKnowledge(
       final: final.view,
       handoff: persisted,
       passed: Object.values(checks).every(Boolean),
-    };
+    },contract);
   }
 
   async function qualify(referenceSteps: readonly Step[] = world.expected.steps) {
@@ -561,7 +565,7 @@ export async function prepareVaultKnowledge(
     const result = await verify(wrapper);
     const rejectsForgedResult = !(
       await verify({ ...outcome, answer: "unrelated claim" })
-    ).passed;
+    ).outcomeDimensions.returnedValue.passed;
     return {
       ...result,
       checks: {
