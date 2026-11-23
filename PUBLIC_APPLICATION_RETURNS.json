@@ -1,0 +1,58 @@
+[
+  {
+    "template": "spectrolite",
+    "entry": "skills/spectrolite-review/workOnVaultKnowledgeGoal.nl",
+    "resultType": "VaultKnowledgeReport",
+    "decision": "compact audit-only fields",
+    "fields": {
+      "path": "actual note handle",
+      "revision": "actual note revision",
+      "outcome": "requested application value",
+      "authorityPath": "requested authoritative record handle",
+      "reads": "actual requested note review findings + note path/revision; full editor snapshots removed",
+      "answer": "requested grounded synthesis",
+      "handoff": "actual native knowledge handoff"
+    },
+    "evidence": [
+      "skills/spectrolite-review/workOnVaultKnowledgeGoal.nl",
+      "skills/spectrolite-review/types.ts"
+    ],
+    "consumers": [
+      "/home/werg/vibe-app-values-spectrolite/skills/spectrolite-review/natlang.json:8:      \"workOnVaultKnowledgeGoal/stageKnowledgeHandoff.nl\"",
+      "/home/werg/vibe-app-values-spectrolite/skills/spectrolite-review/natlang.json:13:      \"workOnVaultKnowledgeGoal.nl\",",
+      "/home/werg/vibe-app-values-spectrolite/skills/spectrolite-review/natlang.json:14:      \"workOnVaultKnowledgeGoal/readKnowledgeNote.nl\""
+    ],
+    "nativeConsumers": [
+      "/home/werg/vibe-app-values-spectrolite/skills/spectrolite-review-fixtures/knowledge-managed.ts:13:  VaultKnowledgeReport,",
+      "/home/werg/vibe-app-values-spectrolite/skills/spectrolite-review-fixtures/knowledge-managed.ts:346:    const wrapper = value as VaultKnowledgeReport | null;",
+      "/home/werg/vibe-app-values-spectrolite/skills/spectrolite-review-fixtures/knowledge-managed.ts:548:    const outcome: VaultKnowledgeReport = {",
+      "/home/werg/vibe-app-values-spectrolite/skills/spectrolite-review/types.ts:187:export type VaultKnowledgeReport = {",
+      "/home/werg/vibe-app-values-spectrolite/skills/spectrolite-review/workOnVaultKnowledgeGoal/knowledgeResult.ts:1:import type {OpenVaultView,VaultKnowledgeRead,VaultKnowledgeHandoff,VaultKnowledgeReport,VaultKnowledgeOutcome} from \"../types.js\";",
+      "/home/werg/vibe-app-values-spectrolite/skills/spectrolite-review/workOnVaultKnowledgeGoal/knowledgeResult.ts:2:export default function knowledgeResult(summary:{outcome:VaultKnowledgeOutcome;authorityPath:string|null;answer:string},current:OpenVaultView,reads:VaultKnowledgeRead[],handoff:VaultKnowledgeHandoff|null):VaultKnowledgeReport {"
+    ]
+  },
+  {
+    "template": "spectrolite",
+    "entry": "skills/spectrolite-review/workTowardVaultGoal.nl",
+    "resultType": "OpenVaultReport",
+    "decision": "retain requested domain value",
+    "fields": {
+      "status": "requested application value",
+      "path": "actual note handle",
+      "revision": "actual revision",
+      "review": "requested document/render/revision findings",
+      "reason": "requested application value"
+    },
+    "evidence": [
+      "skills/spectrolite-review/workTowardVaultGoal.nl",
+      "skills/spectrolite-review/types.ts"
+    ],
+    "consumers": [
+      "/home/werg/vibe-app-values-spectrolite/skills/spectrolite-review/natlang.json:11:      \"workTowardVaultGoal.nl\",",
+      "/home/werg/vibe-app-values-spectrolite/skills/spectrolite-review/natlang.json:12:      \"workTowardVaultGoal/reviewCurrentVault.nl\","
+    ],
+    "nativeConsumers": [
+      "/home/werg/vibe-app-values-spectrolite/skills/spectrolite-review/types.ts:162:export type OpenVaultReport ="
+    ]
+  }
+]
