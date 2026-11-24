@@ -268,7 +268,7 @@ export async function prepareOpenSpectroliteGoal(
     const outcome = report as { status?: string; path?: string; revision?: string; review?: { findings: Finding[] } };
     const { final, status, committedFiles, workingFiles, sourceContentEvidence } = await inspectNativeState();
     const expectedWorking = { ...world.files, ...world.draft };
-    const editablePaths = expected.editedSource === undefined ? [] : [expected.path];
+    const editablePaths = world.writablePath ? [world.writablePath] : [];
     const observations = inspections.map(({ read, view, binding }) => ({ path: view.path, revision: view.revision, visible: read.text, binding }));
     const findings = outcome?.review?.findings;
     const receipts = latestEvidence;
@@ -284,7 +284,7 @@ export async function prepareOpenSpectroliteGoal(
         isDeepStrictEqual(binding.generation, final.binding.generation)),
       exactObservedNavigation: expected.route.every(edge => hops.some(hop => isDeepStrictEqual(hop, edge))) &&
         expected.route.every(({ to }) => observations.some(({ path }) => path === to)),
-      currentSpectroliteOutcome: outcome?.status===(expected.editedSource===undefined?"reviewed":"edited")&&final.view.path === expected.path && outcome?.path === expected.path &&
+      currentSpectroliteOutcome: outcome?.status===(editablePaths.length===0?"reviewed":"edited")&&final.view.path === expected.path && outcome?.path === expected.path &&
         outcome.revision === final.view.revision && observations.at(-1)?.revision === final.view.revision &&
         (editablePaths.length > 0 || !expected.visible || final.read.text.includes(expected.visible)),
       canonicalReviewFindings: Array.isArray(findings) && findings.length === expected.findings.length &&
@@ -306,7 +306,7 @@ export async function prepareOpenSpectroliteGoal(
       protectedVaultHeads: isDeepStrictEqual(initial.committed, status.committed) &&
         initial.mainEventId === status.mainEventId && isDeepStrictEqual(committedFiles, world.files),
     };
-    const contract:SemanticOutcomeContract={effects:{checks:["originalSpectroliteEditor", "exactObservedNavigation", "exactVaultWrite", "protectedVaultHeads"],rationale:"Independent native observations, authority and persisted state establish application effects."},returnedValue:{checks:["currentSpectroliteOutcome", "canonicalReviewFindings"],required:expected.editedSource===undefined,rationale:"These are the actual requested domain findings or query values; mutation-only calls retain their separately observed effects."},incidentalValues:{checks:[],rationale:"Optional incorrect mutation returns are recorded against the actual invocation, without invalidating correct native effects."}};
+    const contract:SemanticOutcomeContract={effects:{checks:["originalSpectroliteEditor", "exactObservedNavigation", "exactVaultWrite", "protectedVaultHeads"],rationale:"Independent native observations, authority and persisted state establish application effects."},returnedValue:{checks:["currentSpectroliteOutcome", "canonicalReviewFindings"],required:editablePaths.length===0,rationale:"These are the actual requested domain findings or query values; mutation-only calls retain their separately observed effects."},incidentalValues:{checks:[],rationale:"Optional incorrect mutation returns are recorded against the actual invocation, without invalidating correct native effects."}};
 
     const assessed=await assessObservedApplicationOutcome({ passed: Object.values(checks).every(Boolean), contextId, caseId, panelId, goal, checks,
       observations, hops, writes, revisionAttempts, final: { path: final.view.path, revision: final.view.revision, binding: final.binding },
@@ -382,7 +382,7 @@ export async function prepareOpenSpectroliteGoal(
     );
     const [committedFiles, workingFiles, originalDocuments] = await Promise.all([
       readFiles(stateRef(final.vault.committed)), readFiles(final.working),
-      expected.editedSource !== undefined || writablePaths?.length ? readFiles(initial.workingHead) : undefined,
+      world.writablePath || writablePaths?.length ? readFiles(initial.workingHead) : undefined,
     ]);
     const observedDocuments = [...new Map(inspections.map(({view, binding}) => {
       const sourceHash = sha256HexSyncText(view.source);
