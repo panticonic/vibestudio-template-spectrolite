@@ -15,6 +15,7 @@
     "@vibestudio/content-addressing": "workspace:*",
     "@workspace/runtime": "workspace:*",
     "@workspace/testkit": "workspace:*",
-    "@workspace-panels/spectrolite": "workspace:*"
+    "@workspace-panels/spectrolite": "workspace:*",
+    "@workspace/application-outcomes": "workspace:*"
   }
 }
