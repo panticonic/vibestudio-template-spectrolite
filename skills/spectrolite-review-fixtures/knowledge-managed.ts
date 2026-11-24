@@ -1,3 +1,4 @@
+import { vaultSourceReview, verifiesScopedVaultWrites } from "./source-content-evidence.js";
 import {assessObservedApplicationOutcome} from "@workspace/application-outcomes/observed-application-outcome";
 import type {InvocationObservations} from "@workspace/application-outcomes/observed-invocation";
 import type {SemanticOutcomeContract} from "@workspace/application-outcomes/semantic-outcome-contract";
@@ -358,11 +359,12 @@ export async function prepareVaultKnowledge(
       workingFiles,
       committedFiles,
       revisionAttempts,
+      sourceContentEvidence,
     } = await core.inspectNativeState();
     const expectation = world.expected;
     const expectedWorking = { ...world.files, ...world.draft };
     const paths = expectation.steps.filter((step) => step.kind === "write");
-    for (const step of paths) expectedWorking[step.path] = step.source;
+    if (paths.length && !sourceContentEvidence) throw new Error("Writable vault knowledge needs its native source readback");
     const persisted =
       file && saved ? JSON.parse(await fs.readFile(file, "utf8")) : null;
     const authorityPath =
@@ -409,16 +411,10 @@ export async function prepareVaultKnowledge(
                   Boolean(evidence.preview?.detail && finding.detail.includes(evidence.preview.detail)));
             }))),
       independentVaultReadback:
-        isDeepStrictEqual(workingFiles, expectedWorking) &&
         isDeepStrictEqual(committedFiles, world.files) &&
-        writes.every(write => paths.some(step => step.path === write.path)) &&
-        paths.every((step) => {
-          const write = writes.findLast((value) => value.path === step.path);
-          return (
-            write?.path === step.path &&
-            write.toSourceHash === sha256HexSyncText(step.source)
-          );
-        }),
+        (paths.length > 0
+          ? !!sourceContentEvidence && verifiesScopedVaultWrites(sourceContentEvidence, paths.map(step => step.path))
+          : isDeepStrictEqual(workingFiles, expectedWorking) && writes.length === 0),
       preservedCommittedVault:
         isDeepStrictEqual(status.committed, initial.committed) &&
         status.mainEventId === initial.mainEventId &&
@@ -463,6 +459,7 @@ export async function prepareVaultKnowledge(
       workingFiles,
       final: final.view,
       handoff: persisted,
+      ...(paths.length && sourceContentEvidence ? vaultSourceReview(world.goal, paths.map(step => step.path), {...sourceContentEvidence,events:structuredClone(events),handoff:persisted}) : {}),
       passed: Object.values(checks).every(Boolean),
     },contract,value,invocation,[
     ...(["outcome","authorityPath","answer"] as const).map(field=>({checks:["matchedKnowledgeOutcome"],rootPath:[field],producerSourceSuffix:"workOnVaultKnowledgeGoal/summarizeKnowledgeWork.nl",producerPath:[field]})),

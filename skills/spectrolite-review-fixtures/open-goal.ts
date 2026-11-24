@@ -1,3 +1,4 @@
+import { vaultSourceReview, verifiesScopedVaultWrites } from "./source-content-evidence.js";
 import {assessObservedApplicationOutcome} from "@workspace/application-outcomes/observed-application-outcome";
 import type {InvocationObservations} from "@workspace/application-outcomes/observed-invocation";
 import type {SemanticOutcomeContract} from "@workspace/application-outcomes/semantic-outcome-contract";
@@ -265,9 +266,9 @@ export async function prepareOpenSpectroliteGoal(
   async function verify(value: unknown,invocation?:InvocationObservations) {
     const report = (value as unknown | null);
     const outcome = report as { status?: string; path?: string; revision?: string; review?: { findings: Finding[] } };
-    const { final, status, committedFiles, workingFiles } = await inspectNativeState();
+    const { final, status, committedFiles, workingFiles, sourceContentEvidence } = await inspectNativeState();
     const expectedWorking = { ...world.files, ...world.draft };
-    if (expected.editedSource !== undefined) expectedWorking[expected.path] = expected.editedSource;
+    const editablePaths = expected.editedSource === undefined ? [] : [expected.path];
     const observations = inspections.map(({ read, view, binding }) => ({ path: view.path, revision: view.revision, visible: read.text, binding }));
     const findings = outcome?.review?.findings;
     const receipts = latestEvidence;
@@ -285,7 +286,7 @@ export async function prepareOpenSpectroliteGoal(
         expected.route.every(({ to }) => observations.some(({ path }) => path === to)),
       currentSpectroliteOutcome: outcome?.status===(expected.editedSource===undefined?"reviewed":"edited")&&final.view.path === expected.path && outcome?.path === expected.path &&
         outcome.revision === final.view.revision && observations.at(-1)?.revision === final.view.revision &&
-        (!expected.visible || final.read.text.includes(expected.visible)),
+        (editablePaths.length > 0 || !expected.visible || final.read.text.includes(expected.visible)),
       canonicalReviewFindings: Array.isArray(findings) && findings.length === expected.findings.length &&
         receipts?.path === expected.path && receipts.document.contentHash === final.document.contentHash &&
         expected.findings.every(([check, code]) => {
@@ -298,12 +299,10 @@ export async function prepareOpenSpectroliteGoal(
             (code !== "broken-link" || final.document.links.filter(link => !link.resolvedPath)
               .every(({ target }) => row.detail.includes(target)));
         }),
-      exactVaultWrite: isDeepStrictEqual(workingFiles, expectedWorking) &&
-        (expected.editedSource !== undefined
-          ? writes.length > 0 &&
-            writes.every(write => write.path === expected.path) &&
-            writes.at(-1)?.toSourceHash === sha256HexSyncText(expected.editedSource)
-          : writes.length === 0 && isDeepStrictEqual(status.workingHead, initial.workingHead)),
+      exactVaultWrite: editablePaths.length > 0
+        ? !!sourceContentEvidence && verifiesScopedVaultWrites(sourceContentEvidence, editablePaths)
+        : isDeepStrictEqual(workingFiles, expectedWorking) && writes.length === 0 &&
+          isDeepStrictEqual(status.workingHead, initial.workingHead),
       protectedVaultHeads: isDeepStrictEqual(initial.committed, status.committed) &&
         initial.mainEventId === status.mainEventId && isDeepStrictEqual(committedFiles, world.files),
     };
@@ -311,7 +310,9 @@ export async function prepareOpenSpectroliteGoal(
 
     const assessed=await assessObservedApplicationOutcome({ passed: Object.values(checks).every(Boolean), contextId, caseId, panelId, goal, checks,
       observations, hops, writes, revisionAttempts, final: { path: final.view.path, revision: final.view.revision, binding: final.binding },
-      committedFiles, workingFiles },contract,value,invocation,[
+      committedFiles, workingFiles,
+      ...(editablePaths.length && sourceContentEvidence ? vaultSourceReview(goal, editablePaths, sourceContentEvidence) : {}),
+    },contract,value,invocation,[
     {checks:["canonicalReviewFindings"],rootPath:["review"],producerSourceSuffix:"workTowardVaultGoal/reviewCurrentVault.nl"},
     {checks:["currentSpectroliteOutcome"],rootPath:["reason"],producerSourceSuffix:"workTowardVaultGoal/chooseVaultStep.nl",producerPath:["reason"]},
   ]);
@@ -379,9 +380,21 @@ export async function prepareOpenSpectroliteGoal(
         return [path, file?.content.kind === "text" ? file.content.text : null];
       })),
     );
+    const [committedFiles, workingFiles, originalDocuments] = await Promise.all([
+      readFiles(stateRef(final.vault.committed)), readFiles(final.working),
+      expected.editedSource !== undefined || writablePaths?.length ? readFiles(initial.workingHead) : undefined,
+    ]);
+    const observedDocuments = [...new Map(inspections.map(({view, binding}) => {
+      const sourceHash = sha256HexSyncText(view.source);
+      return [JSON.stringify([view.path,view.revision,sourceHash]), {path:view.path,revision:view.revision,source:view.source,sourceHash,visible:view.visible,binding}] as const;
+    })).values()];
     return {
-      final, status, initial, committedFiles: await readFiles(stateRef(final.vault.committed)),
-      workingFiles: await readFiles(final.working),
+      final, status, initial, committedFiles, workingFiles,
+      ...(originalDocuments ? { sourceContentEvidence: {
+        originalDocuments, observedDocuments, retainedDocuments:workingFiles, committedDocuments:committedFiles,
+        currentDocument:{path:final.view.path,revision:final.view.revision,source:final.view.source,sourceHash:sha256HexSyncText(final.view.source),visible:final.read.text,preview:final.read.preview,binding:final.binding},
+        writes:structuredClone(writes),
+      }} : {sourceContentEvidence:undefined}),
       hops: structuredClone(hops), writes: structuredClone(writes),
       revisionAttempts: structuredClone(revisionAttempts),
     };

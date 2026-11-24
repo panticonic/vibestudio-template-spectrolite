@@ -1,4 +1,5 @@
 import { beforeEach, expect, it, vi } from "vitest";
+import {sha256HexSyncText} from "@vibestudio/content-addressing";
 import { prepareOpenSpectroliteGoal, type OpenSpectroliteScene } from "./open-goal.js";
 import { prepareVaultKnowledge } from "./knowledge-managed.js";
 
@@ -24,6 +25,8 @@ const state = vi.hoisted(() => ({
   contextId: "context",
   replaceDuringRead: false,
   closedAttempts: [] as string[],
+  head: "commit",
+  history: new Map<string, Record<string,string>>(),
 }));
 const ref = { kind: "event", eventId: "commit" };
 vi.mock("@workspace/testkit", () => ({
@@ -43,13 +46,15 @@ vi.mock("@workspace/testkit", () => ({
 vi.mock("@workspace/runtime", () => ({
   fs: {},
   vcs: {
-    status: async () => ({ mainEventId: "main", workingHead: ref, committed: ref }),
+    status: async () => ({ mainEventId: "main", workingHead: {kind:"event",eventId:state.head}, committed: ref }),
     edit: async ({ changes }: { changes: { fileId: string; edits: { text: string }[] }[] }) => {
+      state.history.set(state.head, {...state.source});
       for (const change of changes) state.source[change.fileId] = change.edits[0]!.text;
-      return { workingHead: ref, changeIds: ["edit"] };
+      state.head = `edit-${state.history.size}`;
+      return { workingHead: {kind:"event",eventId:state.head}, changeIds: ["edit"] };
     },
-    readFile: async ({ file }: { file: { path: string } }) => ({
-      fileId: file.path, content: { kind: "text", text: state.source[file.path] },
+    readFile: async ({ state: ref, file }: { state: {eventId:string}; file: { path: string } }) => ({
+      fileId: file.path, content: { kind: "text", text: (state.history.get(ref.eventId) ?? state.source)[file.path] },
     }),
   },
   panelTree: { get: () => ({
@@ -89,15 +94,17 @@ function links(path: string) {
 }
 vi.mock("@workspace-panels/spectrolite/review-evidence", () => ({
   observeVaultReview: async ({ path }: { path: string }) => ({
-    vault: { id: "vault", repositoryId: "repo", working: { kind: "event", id: "commit" },
+    vault: { id: "vault", repositoryId: "repo", working: { kind: "event", id: state.head },
       committed: { kind: "event", id: "commit" } },
-    document: { id: "doc", fileId: path, links: links(path), contentHash: state.source[path] },
+    document: { id: "doc", fileId: path, links: links(path), contentHash: sha256HexSyncText(state.source[path] ?? "") },
   }),
   projectDocumentReviewReceipt: () => null,
 }));
 
 beforeEach(() => {
   state.actions = [];
+  state.head = "commit";
+  state.history.clear();
   state.contextId = "context";
   state.generation = { ...state.generation, attemptId: "attempt" };
   state.replaceDuringRead = false;
@@ -190,4 +197,55 @@ it("supports revising an authorized document iteratively with fresh native evide
   const after = await spectroliteGoal.inspect();
   expect(await spectroliteGoal.revise(after.revision, "Final revision.")).toBe("written");
   expect(state.source[unresolved.openPath]).toBe("Final revision.");
+});
+
+it("binds alternative vault prose to actual native bytes and preserves protected files", async () => {
+  const target="Public Notice.mdx",authority="Signed Order.mdx",protectedPath="Crew Note.mdx";
+  const world:OpenSpectroliteScene={id:"alternative-prose",goal:"Update the public gate closing time from the signed order. Preserve unrelated copy and leave a working draft.",openPath:target,
+    files:{[target]:"Gate closes at 18:00.",[authority]:"Approved closing time: 18:45.",[protectedPath]:"Keep the emergency lane clear."},
+    writablePath:target,expected:{path:target,route:[],findings:[],visible:"Gate closes at 18:45.",editedSource:"Gate closes at 18:45."}};
+  const prepared=await useWorld(world);
+  const service=prepared.services.spectroliteGoal;
+  const original=await service.inspect();
+  const candidate="The public gate closing time is 18:45.";
+  expect(await service.revise(original.revision,candidate)).toBe("written");
+  const proof=await prepared.verify(null);
+  expect(proof.outcomeDimensions.effects.passed).toBe(true);
+  expect(proof.semanticReviewRequired).toBe(true);
+  expect(proof.sourceContentEvidence?.originalDocuments[target]).toBe(world.files[target]);
+  expect(proof.sourceContentEvidence?.retainedDocuments[target]).toBe(candidate);
+  expect(proof.sourceContentEvidence?.originalDocuments).toEqual(world.files);
+  expect(proof.sourceContentEvidence?.committedDocuments).toEqual(world.files);
+  expect(proof.sourceContentEvidence?.currentDocument.sourceHash).toBe(sha256HexSyncText(candidate));
+  expect(proof.sourceContentEvidence?.writes.at(-1)?.toSourceHash).toBe(sha256HexSyncText(candidate));
+  expect(proof.sourceContentEvidence?.observedDocuments).toEqual(expect.arrayContaining([expect.objectContaining({path:target,source:world.files[target],sourceHash:sha256HexSyncText(world.files[target]!)} )]));
+  expect(proof.semanticReviewInput?.actual).toEqual({goal:world.goal,...proof.sourceContentEvidence});
+  expect(JSON.stringify(proof.semanticReviewInput)).not.toContain(world.expected.editedSource);
+  state.source[protectedPath]="Unauthorized change.";
+  expect((await prepared.verify(null)).outcomeDimensions.effects.passed).toBe(false);
+  state.source[protectedPath]=world.files[protectedPath]!;
+  state.source[target]="Unrecorded later replacement.";
+  expect((await prepared.verify(null)).outcomeDimensions.effects.passed).toBe(false);
+});
+
+it("verifies knowledge writes against retained candidate bytes rather than reference prose", async () => {
+  const target="Notice.mdx",protectedPath="Crew.mdx";
+  const files={[target]:"Gate closes at 18:00.",[protectedPath]:"Crew briefing remains at 17:00."};
+  state.path=target;state.source={...files};
+  const prepared=await prepareVaultKnowledge({contextId:"context",caseId:"knowledge-alternate",panelId:"panel"},{
+    kind:"vaultWork",workspace:"spectrolite",id:"knowledge-alternate",goal:"Rewrite the notice to say the gate closes at 18:45, leaving the crew briefing alone.",sourceGroup:"knowledge-alternate",openPath:target,files,writable:[target],
+    expected:{path:target,outcome:"edited",citations:[],steps:[{kind:"read",path:target,findings:[["document","document-ready"]]},{kind:"write",path:target,source:"Gate closes at 18:45."},{kind:"read",path:target,findings:[["document","document-ready"]]}]}
+  });
+  const service=prepared.services.spectroliteGoal;
+  const before=await service.inspect();await service.evidence(["document"]);
+  const actual="The closing time for the gate is 18:45.";
+  expect(await service.revise(before.revision,actual)).toBe("written");
+  await service.inspect();await service.evidence(["document"]);
+  const proof=await prepared.verify(null);
+  expect(proof.outcomeDimensions.effects.passed).toBe(true);
+  expect(proof.semanticReviewRequired).toBe(true);
+  expect(proof.semanticReviewInput?.actual).toEqual({goal:proof.goal,...proof.sourceContentEvidence});
+  expect(proof.sourceContentEvidence?.retainedDocuments[target]).toBe(actual);
+  state.source[protectedPath]="Unauthorized change.";
+  expect((await prepared.verify(null)).outcomeDimensions.effects.passed).toBe(false);
 });
