@@ -94,3 +94,48 @@ describe("Spectrolite graph evidence", () => {
     ).toBe(false);
   });
 });
+
+// Actual native reference failure: both cards were correctly changed and read
+// back, but path-selected prerequisites incorrectly included future edit proof.
+const authority = {kind:"read",path:"Accessibility Ruling.mdx",findings:[["document","document-ready"]]} as const;
+const visitor = {kind:"read",path:"working/Visitor Entry Card.mdx",findings:[["document","document-ready"]]} as const;
+const visitorAfter = {...visitor,findings:[["document","document-ready"],["preview","preview-ready"],["revision","draft-changed"]]} as const;
+const steward = {kind:"read",path:"working/Steward Card.mdx",findings:[["document","document-ready"]]} as const;
+const stewardAfter = {...steward,findings:[["document","document-ready"],["revision","draft-changed"]]} as const;
+const visitorWrite = {kind:"write",path:visitor.path} as const;
+const stewardWrite = {kind:"write",path:steward.path} as const;
+const compound = [
+  authority,
+  {kind:"follow",from:authority.path,target:"Visitor Entry Card",to:visitor.path},
+  visitor,visitorWrite,visitorAfter,
+  {kind:"follow",from:visitor.path,target:"Steward Card",to:steward.path},
+  steward,stewardWrite,stewardAfter,
+] as const;
+const compoundGraph = {basis:[authority.path,visitor.path]};
+
+it("admits the actual compound native reference without requiring future revision proof",()=>{
+  expect(verifiesKnowledgeGraph(compoundGraph,compound,compound,undefined)).toBe(true);
+});
+
+it("accepts redundant authored reads covered by one grouped proof before and after mutation",()=>{
+  const repeatedReference = [authority,authority,visitor,visitor,visitorWrite,visitorAfter,visitorAfter];
+  const groupedActual = [authority,visitor,visitorWrite,
+    {...visitorAfter,findings:[visitorAfter.findings[2]]},
+    {...visitorAfter,findings:[visitorAfter.findings[0],visitorAfter.findings[1]]},
+  ];
+  expect(verifiesKnowledgeGraph(compoundGraph,repeatedReference,groupedActual,undefined)).toBe(true);
+});
+
+it("keeps compound authority and post-write proof required before handoff",()=>{
+  expect(verifiesKnowledgeGraph(compoundGraph,compound,compound.filter(event=>event!==authority),undefined)).toBe(false);
+  expect(verifiesKnowledgeGraph(compoundGraph,compound,[...compound.slice(1),authority],undefined)).toBe(false);
+  expect(verifiesKnowledgeGraph(compoundGraph,compound,compound.filter(event=>event!==stewardAfter),undefined)).toBe(false);
+  expect(verifiesKnowledgeGraph(compoundGraph,compound,compound,compound.length-1)).toBe(false);
+});
+
+it("rejects a requested source whose only reference proof would occur after mutation",()=>{
+  // An explicit authority source remains required before mutation even when a
+  // malformed reference places it after the edit; it cannot silently disappear.
+  const futureAuthority = [visitor,visitorWrite,authority,visitorAfter];
+  expect(verifiesKnowledgeGraph({basis:[authority.path]},futureAuthority,futureAuthority,undefined)).toBe(false);
+});

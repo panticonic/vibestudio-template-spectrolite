@@ -18,19 +18,8 @@ const proofKeys = ({ path, findings }: Read) =>
   new Set(findings.map(([check, code]) => JSON.stringify([path, check, code])));
 
 function covers(required: readonly Read[], observed: readonly Read[]): boolean {
-  const receipts = new Map<string, number>();
-  for (const read of observed) {
-    for (const key of proofKeys(read))
-      receipts.set(key, (receipts.get(key) ?? 0) + 1);
-  }
-  for (const read of required) {
-    for (const key of proofKeys(read)) {
-      const count = receipts.get(key) ?? 0;
-      if (!count) return false;
-      receipts.set(key, count - 1);
-    }
-  }
-  return true;
+  const receipts = new Set(observed.flatMap(read => [...proofKeys(read)]));
+  return required.every(read => [...proofKeys(read)].every(key => receipts.has(key)));
 }
 
 /** Check evidence dependencies without prescribing a navigation path. */
@@ -41,7 +30,13 @@ export function verifiesKnowledgeGraph(
   handoffAt: number | undefined,
 ): boolean {
   const required = reference.filter(isRead);
-  const basis = required.filter((step) => graph.basis.includes(step.path));
+  // A source can be read both before and after its edit. Selecting prerequisites
+  // by path across the entire reference would demand the future edit's proof
+  // before that edit. Only the initial evidence can authorize mutations.
+  const firstWrite = reference.findIndex(step => step.kind === "write");
+  const prerequisiteReads = reference.slice(0, firstWrite < 0 ? reference.length : firstWrite).filter(isRead);
+  const basis = prerequisiteReads.filter(step => graph.basis.includes(step.path));
+  if (graph.basis.some(path => !basis.some(read => read.path === path))) return false;
   const beforeHandoff = handoffAt ?? actual.length;
   if (!covers(required, actual.slice(0, beforeHandoff).filter(isRead)))
     return false;
