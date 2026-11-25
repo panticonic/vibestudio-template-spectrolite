@@ -293,3 +293,21 @@ it("judges requested query meaning separately from incidental reference report e
   // accepted native proof: no test substitutes a fabricated reviewer verdict.
   expect((await prepared.verify({answer:"The closing time is 23:00."})).semanticReviewRequired).toBe(true);
 });
+
+it("reviews differently phrased findings without a hidden count, route-token, opaque-ID or disposition requirement",async()=>{
+ const prepared=await useWorld(unresolved);const view=await prepared.services.spectroliteGoal.inspect();
+ // No actor evidence() route is required: verification independently reads native facts.
+ const report={path:view.path,revision:view.revision,review:{findings:[
+  {check:"document",code:"broken-link",detail:"The supporting record cannot be opened.",evidenceIds:[]},
+  {check:"revision",code:"revision-unverified",detail:"There is no committed document receipt.",evidenceIds:[]},
+ ]}};
+ const proof=await prepared.verify(report);
+ expect(proof.passed).toBe(true);expect(proof.semanticReviewRequired).toBe(true);
+ expect(proof.semanticReviewInput.actual.requestedReturn).toEqual(report);
+ expect(proof.semanticReviewInput.actual.observations.observations[0]).toMatchObject({source:unresolved.files[unresolved.openPath],document:{contentHash:sha256HexSyncText(unresolved.files[unresolved.openPath]!)}});
+});
+it("rejects invented finding identities even when wording is unrestricted",async()=>{
+ const prepared=await useWorld(unresolved);const view=await prepared.services.spectroliteGoal.inspect();
+ const proof=await prepared.verify({path:view.path,revision:view.revision,review:{findings:[{check:"document",code:"broken-link",detail:"Unavailable",evidenceIds:["foreign-document"]}]}});
+ expect(proof.checks.canonicalReviewFindings).toBe(false);
+});

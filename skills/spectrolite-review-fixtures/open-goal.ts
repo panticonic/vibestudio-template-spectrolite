@@ -1,4 +1,5 @@
 import { vaultSourceReview, verifiesScopedVaultWrites } from "./source-content-evidence.js";
+import {observedContentReview} from "@workspace/application-outcomes/observed-content-review";
 import {assessObservedApplicationOutcome} from "@workspace/application-outcomes/observed-application-outcome";
 import type {InvocationObservations} from "@workspace/application-outcomes/observed-invocation";
 import type {SemanticOutcomeContract} from "@workspace/application-outcomes/semantic-outcome-contract";
@@ -124,7 +125,6 @@ export async function prepareOpenSpectroliteGoal(
   }
 
   const inspections: Awaited<ReturnType<typeof observe>>[] = [];
-  let latestEvidence: Awaited<ReturnType<typeof evidence>> | undefined;
   let busy = false;
   const revisionAttempts: { revision: string; outcome: string }[] = [];
   async function currentRevision(revision: string, intent: "navigate" | "edit") {
@@ -257,8 +257,7 @@ export async function prepareOpenSpectroliteGoal(
         if (!checks.length || new Set(checks).size !== checks.length ||
             checks.some(check => !["document", "preview", "navigation", "revision"].includes(check)))
           throw new Error("Choose actual Spectrolite document, preview, navigation, or revision checks");
-        latestEvidence = await evidence(checks);
-        return latestEvidence;
+        return evidence(checks);
       },
     },
   };
@@ -269,35 +268,31 @@ export async function prepareOpenSpectroliteGoal(
     const { final, status, committedFiles, workingFiles, sourceContentEvidence } = await inspectNativeState();
     const expectedWorking = { ...world.files, ...world.draft };
     const editablePaths = world.writablePath ? [world.writablePath] : [];
-    const observations = inspections.map(({ read, view, binding }) => ({ path: view.path, revision: view.revision, visible: read.text, binding }));
+    const observations = inspections.map(({ read, view, binding, document }) => ({ path: view.path, revision: view.revision, visible: read.text, source:view.source, preview:read.preview, document, binding }));
     const findings = outcome?.review?.findings;
-    const receipts = latestEvidence;
+    // Independently observe current facts; a particular actor evidence-call route is not required.
+    const receipts = await evidence(["document", "preview", "navigation", "revision"]);
     function relevantIds(check: string) {
       return receipts ? [receipts.vault.id, receipts.document.id,
         check === "preview" ? receipts.preview?.id : check === "navigation" ? receipts.navigation?.id :
           check === "revision" ? receipts.committedDocument?.id : null,
       ].filter(Boolean) : [];
     }
-    const selected = Array.isArray(findings) ? new Map(findings.filter(finding => typeof finding?.check === "string").map(finding => [finding.check, finding])) : new Map<string, Finding>();
     const checks = {
       originalSpectroliteEditor: observations[0]?.path === world.openPath && observations.every(({ binding }) =>
         isDeepStrictEqual(binding.generation, final.binding.generation)),
       exactObservedNavigation: expected.route.every(edge => hops.some(hop => isDeepStrictEqual(hop, edge))) &&
         expected.route.every(({ to }) => observations.some(({ path }) => path === to)),
-      currentSpectroliteOutcome: outcome?.status===(editablePaths.length===0?"reviewed":"edited")&&final.view.path === expected.path && outcome?.path === expected.path &&
-        outcome.revision === final.view.revision && observations.at(-1)?.revision === final.view.revision &&
+      currentSpectroliteOutcome: final.view.path === expected.path &&
+        observations.at(-1)?.revision === final.view.revision &&
         (editablePaths.length > 0 || !expected.visible || final.read.text.includes(expected.visible)),
-      canonicalReviewFindings: Array.isArray(findings) && findings.length === expected.findings.length &&
-        receipts?.path === expected.path && receipts.document.contentHash === final.document.contentHash &&
-        expected.findings.every(([check, code]) => {
-          const row = selected.get(check);
-          return row?.code === code && receipts && classifyFinding(receipts, check) === code &&
+      canonicalReviewFindings: Array.isArray(findings) &&
+        receipts.path === expected.path && receipts.document.contentHash === final.document.contentHash &&
+        findings.every(row => {
+          if (!row || !["document","preview","navigation","revision"].includes(row.check)) return false;
+          return row.code === classifyFinding(receipts,row.check) &&
             typeof row.detail === "string" && row.detail.trim().length > 0 &&
-            Array.isArray(row.evidenceIds) && row.evidenceIds.length === relevantIds(check).length &&
-            relevantIds(check).every(id => row.evidenceIds.includes(id)) &&
-            (check !== "navigation" || [world.openPath, ...expected.route.map(({ to }) => to)].every(path => row.detail.includes(path))) &&
-            (code !== "broken-link" || final.document.links.filter(link => !link.resolvedPath)
-              .every(({ target }) => row.detail.includes(target)));
+            Array.isArray(row.evidenceIds) && row.evidenceIds.every(id => relevantIds(row.check).includes(id));
         }),
       exactVaultWrite: editablePaths.length > 0
         ? !!sourceContentEvidence && verifiesScopedVaultWrites(sourceContentEvidence, editablePaths)
@@ -309,7 +304,7 @@ export async function prepareOpenSpectroliteGoal(
     const contract:SemanticOutcomeContract={effects:{checks:["originalSpectroliteEditor", "exactObservedNavigation", "exactVaultWrite", "protectedVaultHeads"],rationale:"Independent native observations, authority and persisted state establish application effects."},returnedValue:{checks:["currentSpectroliteOutcome", "canonicalReviewFindings"],required:editablePaths.length===0,rationale:"These are the actual requested domain findings or query values; mutation-only calls retain their separately observed effects."},incidentalValues:{checks:[],rationale:"Optional incorrect mutation returns are recorded against the actual invocation, without invalidating correct native effects."}};
 
     const assessed=await assessObservedApplicationOutcome({ passed: Object.values(checks).every(Boolean), contextId, caseId, panelId, goal, checks,
-      observations, hops, writes, revisionAttempts, final: { path: final.view.path, revision: final.view.revision, binding: final.binding },
+      observations, hops, receipts, writes, revisionAttempts, final: { path: final.view.path, revision: final.view.revision, binding: final.binding },
       committedFiles, workingFiles,
       ...(editablePaths.length && sourceContentEvidence ? vaultSourceReview(goal, editablePaths, sourceContentEvidence) : {}),
     },contract,value,invocation,[
@@ -317,7 +312,9 @@ export async function prepareOpenSpectroliteGoal(
     {checks:["currentSpectroliteOutcome"],rootPath:["reason"],producerSourceSuffix:"workTowardVaultGoal/chooseVaultStep.nl",producerPath:["reason"]},
   ]);
     const {observedChecks,...dimensions}=assessed;
-    return {...dimensions,checks:observedChecks};
+    return {...dimensions,checks:observedChecks,
+      ...(!editablePaths.length ? observedContentReview(assessed,contract,value,["observations","hops","receipts","final"]) : {}),
+    };
   }
 
   function classifyFinding(data: Awaited<ReturnType<typeof evidence>>, check: string) {
