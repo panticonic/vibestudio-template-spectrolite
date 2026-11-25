@@ -8,6 +8,7 @@
       "workOnVaultKnowledgeGoal/stageKnowledgeHandoff.nl"
     ],
     "spectroliteGoal": [
+      "applyVaultChange.ts",
       "workTowardVaultGoal.ts",
       "workTowardVaultGoal/reviewCurrentVault.nl",
       "workOnVaultKnowledgeGoal.ts",

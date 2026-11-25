@@ -153,8 +153,18 @@ type OpenVaultView = {
   visible: string;
   links: { target: string; path: string | null }[];
 };
-type OpenVaultDecision = | { kind: "follow"; target: string }
-  | { kind: "revise"; source: string }
+type VaultOperationObservation = | { kind: "follow"; fromPath: string; fromRevision: string; target: string;
+      nativeTarget: string; result: "followed" | "changed" | "unavailable";
+      path: string; revision: string }
+  | { kind: "revise"; path: string; revision: string; source: string;
+      result: "written" | "changed" | "unavailable"; observedRevision: string };
+type VaultObservationHistory = {
+  views: OpenVaultView[];
+  operations: VaultOperationObservation[];
+};
+type VaultChange = | { kind: "follow"; target: string }
+  | { kind: "revise"; source: string };
+type OpenVaultDecision = | VaultChange
   | { kind: "review"; checks: ("document" | "preview" | "navigation" | "revision")[] }
   | { kind: "blocked"; reason: string };
 type OpenVaultReport = | { status: "reviewed" | "edited"; path: string; revision: string; review: SpectroliteReviewReport }
@@ -166,9 +176,8 @@ type VaultKnowledgeRead = {
 type VaultKnowledgeOutcome = | "authority-confirmed" | "conflict-unresolved" | "retired-link"
   | "draft-differs" | "preview-confirmed" | "preview-unavailable"
   | "edited" | "handoff-staged" | "handoff-held";
-type VaultKnowledgeStep = | { kind: "follow"; target: string }
+type VaultKnowledgeStep = | VaultChange
   | { kind: "read"; checks: ("document" | "preview" | "revision")[] }
-  | { kind: "revise"; source: string }
   | { kind: "handoff"; audience: string }
   | { kind: "finish" };
 type VaultKnowledgeHandoff = {
@@ -187,5 +196,5 @@ type VaultKnowledgeReport = {
   answer: string;
   handoff: VaultKnowledgeHandoff | null;
 };
-declare const fn: NatlangFunction<[goal: string, current: OpenVaultView, reads: VaultKnowledgeRead[], writtenPaths: string[], handoff: VaultKnowledgeHandoff | null], { outcome: VaultKnowledgeOutcome; authorityPath: string | null; answer: string }>;
+declare const fn: NatlangFunction<[goal: string, current: OpenVaultView, reads: VaultKnowledgeRead[], writtenPaths: string[], handoff: VaultKnowledgeHandoff | null, history: VaultObservationHistory], { outcome: VaultKnowledgeOutcome; authorityPath: string | null; answer: string }>;
 export default fn;

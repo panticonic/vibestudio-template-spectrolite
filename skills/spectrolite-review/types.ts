@@ -154,9 +154,21 @@ export type OpenVaultView = {
   visible: string;
   links: { target: string; path: string | null }[];
 };
-export type OpenVaultDecision =
+export type VaultOperationObservation =
+  | { kind: "follow"; fromPath: string; fromRevision: string; target: string;
+      nativeTarget: string; result: "followed" | "changed" | "unavailable";
+      path: string; revision: string }
+  | { kind: "revise"; path: string; revision: string; source: string;
+      result: "written" | "changed" | "unavailable"; observedRevision: string };
+export type VaultObservationHistory = {
+  views: OpenVaultView[];
+  operations: VaultOperationObservation[];
+};
+export type VaultChange =
   | { kind: "follow"; target: string }
-  | { kind: "revise"; source: string }
+  | { kind: "revise"; source: string };
+export type OpenVaultDecision =
+  | VaultChange
   | { kind: "review"; checks: ("document" | "preview" | "navigation" | "revision")[] }
   | { kind: "blocked"; reason: string };
 export type OpenVaultReport =
@@ -172,9 +184,8 @@ export type VaultKnowledgeOutcome =
   | "draft-differs" | "preview-confirmed" | "preview-unavailable"
   | "edited" | "handoff-staged" | "handoff-held";
 export type VaultKnowledgeStep =
-  | { kind: "follow"; target: string }
+  | VaultChange
   | { kind: "read"; checks: ("document" | "preview" | "revision")[] }
-  | { kind: "revise"; source: string }
   | { kind: "handoff"; audience: string }
   | { kind: "finish" };
 export type VaultKnowledgeHandoff = {
