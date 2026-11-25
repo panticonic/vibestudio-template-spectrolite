@@ -1,3 +1,4 @@
+import {extendSemanticOutcomeEffects} from "@workspace/application-outcomes/semantic-outcome-contract";
 import { vaultSourceReview, verifiesScopedVaultWrites } from "./source-content-evidence.js";
 import {assessObservedApplicationOutcome} from "@workspace/application-outcomes/observed-application-outcome";
 import type {InvocationObservations} from "@workspace/application-outcomes/observed-invocation";
@@ -553,12 +554,7 @@ export async function prepareVaultKnowledge(
     const negativeChecks={rejectsStale,rejectsUnissuedTarget,
       ...(rejectsWrongRecipient===undefined?{}:{rejectsWrongRecipient}),
       ...(rejectsMissingAnswer===undefined?{}:{rejectsMissingAnswer})};
-    const contract={...result.outcomeContract,effects:{...result.outcomeContract.effects,
-      checks:[...result.outcomeContract.effects.checks,...Object.keys(negativeChecks)]}};
-    const qualified=await assessObservedApplicationOutcome({...result,checks:{...result.checks,...negativeChecks},
-      passed:result.passed&&Object.values(negativeChecks).every(Boolean)},contract,wrapper);
-    const {observedChecks,...dimensions}=qualified;
-    return {...dimensions,checks:observedChecks};
+    return extendSemanticOutcomeEffects(result,negativeChecks);
   }
 
   return { services, verify, qualify };
