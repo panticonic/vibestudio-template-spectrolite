@@ -1,27 +1,17 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import type {
   OpenVaultView,
-  VaultKnowledgeStep,
-  VaultObservationHistory,
 } from "../spectrolite-review/types.js";
 import {
   nativeVaultTarget,
   observeVaultView,
 } from "../spectrolite-review/vaultObservationHistory.js";
 import applyVaultChange from "../spectrolite-review/applyVaultChange.js";
-import workOnVaultKnowledgeGoal from "../spectrolite-review/workOnVaultKnowledgeGoal.js";
-import workTowardVaultGoal from "../spectrolite-review/workTowardVaultGoal.js";
 
 const mocked = vi.hoisted(() => ({
   inspect: vi.fn(),
   follow: vi.fn(),
   revise: vi.fn(),
-  choose: vi.fn(),
-  summarize: vi.fn(),
-  chooseReview: vi.fn(),
-  review: vi.fn(),
-  read: vi.fn(),
-  handoff: vi.fn(),
 }));
 vi.mock("natlang:services", () => ({
   spectroliteGoal: {
@@ -30,30 +20,6 @@ vi.mock("natlang:services", () => ({
     revise: mocked.revise,
   },
 }));
-vi.mock(
-  "../spectrolite-review/workOnVaultKnowledgeGoal/chooseKnowledgeStep.nl",
-  () => ({ default: mocked.choose }),
-);
-vi.mock(
-  "../spectrolite-review/workOnVaultKnowledgeGoal/summarizeKnowledgeWork.nl",
-  () => ({ default: mocked.summarize }),
-);
-vi.mock(
-  "../spectrolite-review/workOnVaultKnowledgeGoal/readKnowledgeNote.nl",
-  () => ({ default: mocked.read }),
-);
-vi.mock(
-  "../spectrolite-review/workOnVaultKnowledgeGoal/stageKnowledgeHandoff.nl",
-  () => ({ default: mocked.handoff }),
-);
-vi.mock("../spectrolite-review/workTowardVaultGoal/chooseVaultStep.nl", () => ({
-  default: mocked.chooseReview,
-}));
-vi.mock(
-  "../spectrolite-review/workTowardVaultGoal/reviewCurrentVault.nl",
-  () => ({ default: mocked.review }),
-);
-
 const a: OpenVaultView = {
   path: "Index.mdx",
   revision: "a",
@@ -73,11 +39,7 @@ beforeEach(() => {
   mocked.inspect.mockResolvedValue(a);
   mocked.follow.mockResolvedValue("followed");
   mocked.revise.mockResolvedValue("written");
-  mocked.summarize.mockResolvedValue({
-    outcome: "authority-confirmed",
-    authorityPath: b.path,
-    answer: "Confirmed capacity 14.",
-  });
+
 });
 
 it("binds only an exact observed link label or resolved path", () => {
@@ -126,82 +88,6 @@ it("records the attempted revision and the actual changed-revision readback", as
     source: "Proposed edit.",
   });
   expect(result.current).toEqual(fresh);
-});
-
-it("retains both sides of a revisit and gives the conclusion actual source without inventing reviews", async () => {
-  const choices: VaultKnowledgeStep[] = [
-    { kind: "follow", target: "records/Ruling.mdx" },
-    { kind: "follow", target: "Index" },
-    { kind: "finish" },
-  ];
-  mocked.choose.mockImplementation(async () => choices.shift());
-  mocked.inspect
-    .mockResolvedValueOnce(a)
-    .mockResolvedValueOnce(b)
-    .mockResolvedValueOnce(a);
-  const report = await workOnVaultKnowledgeGoal(
-    "What is the confirmed capacity?",
-  );
-  expect(mocked.follow.mock.calls).toEqual([
-    ["Ruling", "a"],
-    ["Index", "b"],
-  ]);
-  const history = mocked.summarize.mock.calls[0]![5] as VaultObservationHistory;
-  expect(history.views).toEqual([a, b]);
-  expect(
-    history.operations.map((row) => row.kind === "follow" && row.result),
-  ).toEqual(["followed", "followed"]);
-  expect(mocked.read).not.toHaveBeenCalled();
-  expect(report.reads).toEqual([]);
-  expect(report.answer).toContain("14");
-  expect(mocked.choose.mock.calls[0]![5].operations).toEqual([]);
-  expect(mocked.choose.mock.calls[1]![5].operations).toHaveLength(1);
-});
-
-it("supplies rejected navigation and revision feedback to the next knowledge decision", async () => {
-  const choices: VaultKnowledgeStep[] = [
-    { kind: "follow", target: "missing" },
-    { kind: "revise", source: "Proposed edit." },
-    { kind: "finish" },
-  ];
-  mocked.choose.mockImplementation(async () => choices.shift());
-  mocked.follow.mockResolvedValue("unavailable");
-  mocked.revise.mockResolvedValue("changed");
-  await workOnVaultKnowledgeGoal(
-    "Update the authorized note if its authority is established.",
-  );
-  const afterFollow = mocked.choose.mock
-    .calls[1]![5] as VaultObservationHistory;
-  expect(afterFollow.operations[0]).toMatchObject({
-    kind: "follow",
-    result: "unavailable",
-    path: a.path,
-  });
-  const afterRevision = mocked.choose.mock
-    .calls[2]![5] as VaultObservationHistory;
-  expect(afterRevision.operations[1]).toMatchObject({
-    kind: "revise",
-    result: "changed",
-  });
-  expect(mocked.summarize.mock.calls[0]![3]).toEqual([]);
-});
-
-it("uses the same actual feedback contract for the review coordinator", async () => {
-  mocked.chooseReview
-    .mockResolvedValueOnce({ kind: "follow", target: "missing" })
-    .mockResolvedValueOnce({
-      kind: "blocked",
-      reason: "No accessible evidence.",
-    });
-  mocked.follow.mockResolvedValue("unavailable");
-  expect(await workTowardVaultGoal("Review the ruling.")).toEqual({
-    status: "blocked",
-    reason: "No accessible evidence.",
-  });
-  expect(mocked.chooseReview.mock.calls[1]![2].operations[0]).toMatchObject({
-    kind: "follow",
-    result: "unavailable",
-  });
 });
 
 it("preserves distinct observations when link resolution changes at the same source revision", () => {

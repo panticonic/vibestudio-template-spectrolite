@@ -9,10 +9,12 @@
     ],
     "spectroliteGoal": [
       "applyVaultChange.ts",
-      "workTowardVaultGoal.ts",
       "workTowardVaultGoal/reviewCurrentVault.nl",
-      "workOnVaultKnowledgeGoal.ts",
-      "workOnVaultKnowledgeGoal/readKnowledgeNote.nl"
+      "workOnVaultKnowledgeGoal/readKnowledgeNote.nl",
+      "workTowardVaultGoal/readCurrentVault.ts",
+      "workTowardVaultGoal/applyChange.ts",
+      "workOnVaultKnowledgeGoal/readCurrentVault.ts",
+      "workOnVaultKnowledgeGoal/applyChange.ts"
     ],
     "spectroliteRead": [],
     "spectroliteHandoffRead": [
