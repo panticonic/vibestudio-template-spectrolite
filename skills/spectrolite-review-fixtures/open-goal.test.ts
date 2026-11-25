@@ -163,6 +163,7 @@ it("fails incomplete vault knowledge results while independently checking native
   const prepared = await prepareVaultKnowledge({ contextId: "context", caseId: unresolved.id, panelId: "panel" }, {
     ...unresolved,
     kind: "vaultWork",
+    requestedReturnRequired: true,
     workspace: "spectrolite",
     sourceGroup: "incomplete-result",
     expected: {
@@ -233,7 +234,7 @@ it("verifies knowledge writes against retained candidate bytes rather than refer
   const files={[target]:"Gate closes at 18:00.",[protectedPath]:"Crew briefing remains at 17:00."};
   state.path=target;state.source={...files};
   const prepared=await prepareVaultKnowledge({contextId:"context",caseId:"knowledge-alternate",panelId:"panel"},{
-    kind:"vaultWork",workspace:"spectrolite",id:"knowledge-alternate",goal:"Rewrite the notice to say the gate closes at 18:45, leaving the crew briefing alone.",sourceGroup:"knowledge-alternate",openPath:target,files,writable:[target],
+    kind:"vaultWork",requestedReturnRequired:true,workspace:"spectrolite",id:"knowledge-alternate",goal:"Rewrite the notice to say the gate closes at 18:45, leaving the crew briefing alone.",sourceGroup:"knowledge-alternate",openPath:target,files,writable:[target],
     expected:{path:target,outcome:"edited",citations:[],steps:[{kind:"read",path:target,findings:[["document","document-ready"]]},{kind:"write",path:target,source:"Gate closes at 18:45."},{kind:"read",path:target,findings:[["document","document-ready"]]}]}
   });
   const service=prepared.services.spectroliteGoal;
@@ -256,7 +257,7 @@ it("counts actor inspections before and after knowledge writes without extra rev
   const files={[target]:"Original time: 18:00."};
   state.path=target;state.source={...files};
   const prepared=await prepareVaultKnowledge({contextId:"context",caseId:"source-only",panelId:"panel"},{
-    kind:"vaultWork",workspace:"spectrolite",id:"source-only",goal:"Correct the time to 18:45 and leave the note open.",sourceGroup:"source-only",openPath:target,files,writable:[target],
+    kind:"vaultWork",requestedReturnRequired:false,workspace:"spectrolite",id:"source-only",goal:"Correct the time to 18:45 and leave the note open.",sourceGroup:"source-only",openPath:target,files,writable:[target],
     expected:{path:target,outcome:"edited",citations:["18:45"],steps:[{kind:"read",path:target,findings:[["document","document-ready"],["revision","revision-unchanged"]]},{kind:"write",path:target,source:"18:45"},{kind:"read",path:target,findings:[["document","document-ready"],["revision","draft-changed"]]}]},
   });
   // Setup and verifier readback do not manufacture actor observations.
@@ -276,7 +277,7 @@ it("judges requested query meaning separately from incidental reference report e
   const target="Answer.mdx",files={[target]:"Signed closing time: 18:45."};
   state.path=target;state.source={...files};
   const prepared=await prepareVaultKnowledge({contextId:"context",caseId:"query-source",panelId:"panel"},{
-    kind:"vaultWork",workspace:"spectrolite",id:"query-source",goal:"What is the signed closing time?",sourceGroup:"query-source",openPath:target,files,
+    kind:"vaultWork",requestedReturnRequired:true,workspace:"spectrolite",id:"query-source",goal:"What is the signed closing time?",sourceGroup:"query-source",openPath:target,files,
     expected:{path:"Reference-only-end.mdx",outcome:"authority-confirmed",citations:["hidden exact wording"],steps:[{kind:"read",path:target,findings:[["document","document-ready"],["revision","revision-unchanged"]]}]},
   });
   const answer={answer:"The signed closing time is 18:45."};
@@ -310,4 +311,29 @@ it("rejects invented finding identities even when wording is unrestricted",async
  const prepared=await useWorld(unresolved);const view=await prepared.services.spectroliteGoal.inspect();
  const proof=await prepared.verify({path:view.path,revision:view.revision,review:{findings:[{check:"document",code:"broken-link",detail:"Unavailable",evidenceIds:["foreign-document"]}]}});
  expect(proof.checks.canonicalReviewFindings).toBe(false);
+});
+
+it("keeps a genuinely requested answer required alongside a successful native edit and binds it into source meaning review",async()=>{
+ const target="Pocket Card.mdx",files={[target]:"Approved wording remains under review."};state.path=target;state.source={...files};
+ const world={kind:"vaultWork",workspace:"spectrolite",id:"mixed-answer",requestedReturnRequired:true,goal:"Can the approved wording go on the pocket card? Make only the permitted correction.",sourceGroup:"mixed-answer",openPath:target,files,writable:[target],expected:{path:target,outcome:"edited",citations:[],steps:[{kind:"read",path:target,findings:[["document","document-ready"]]},{kind:"write",path:target,source:"Approved pocket wording."},{kind:"read",path:target,findings:[["document","document-ready"]]}]}} as const;
+ const prepared=await prepareVaultKnowledge({contextId:"context",caseId:world.id,panelId:"panel"},world as never);
+ const current=await prepared.services.spectroliteGoal.inspect();expect(await prepared.services.spectroliteGoal.revise(current.revision,"Approved pocket wording.")).toBe("written");await prepared.services.spectroliteGoal.inspect();
+ const missing=await prepared.verify(undefined);expect(missing.outcomeDimensions.effects.passed).toBe(true);expect(missing.outcomeDimensions.returnedValue.required).toBe(true);expect(missing.outcomeDimensions.returnedValue.passed).toBe(false);
+ const answer="Yes, the approval covers this pocket-card wording and the permitted correction is now retained.";const proof=await prepared.verify({answer});
+ expect(proof.outcomeDimensions.returnedValue.passed).toBe(true);expect(proof.semanticReviewRequired).toBe(true);expect(proof.requestedAnswerRequired).toBe(true);
+ expect(proof.sourceContentEvidence?.requestedAnswer).toBe(answer);expect(proof.semanticReviewInput?.actual.requestedAnswer).toBe(answer);expect(proof.semanticReviewInput?.expected.requestedAnswerRequired).toBe(true);
+});
+it("does not invent a returned answer after an effect-only vault edit, and excludes incidental answer prose from its review",async()=>{
+ const target="Instruction Card.mdx",files={[target]:"Opening at 18:00."};state.path=target;state.source={...files};
+ const world={kind:"vaultWork",workspace:"spectrolite",id:"effect-only",requestedReturnRequired:false,goal:"Correct the opening to 18:45 and leave the card open.",sourceGroup:"effect-only",openPath:target,files,writable:[target],expected:{path:target,outcome:"edited",citations:[],steps:[{kind:"read",path:target,findings:[["document","document-ready"]]},{kind:"write",path:target,source:"Opening at 18:45."},{kind:"read",path:target,findings:[["document","document-ready"]]}]}} as const;
+ const prepared=await prepareVaultKnowledge({contextId:"context",caseId:world.id,panelId:"panel"},world as never);const current=await prepared.services.spectroliteGoal.inspect();await prepared.services.spectroliteGoal.revise(current.revision,"Opening at 18:45.");await prepared.services.spectroliteGoal.inspect();
+ for(const actual of [undefined,{answer:"An incidental explanation"}]){const proof=await prepared.verify(actual);expect(proof.passed).toBe(true);expect(proof.outcomeDimensions.returnedValue.required).toBe(false);expect(proof.semanticReviewRequired).toBe(true);expect(proof.sourceContentEvidence?.requestedAnswer).toBeNull();expect(proof.semanticReviewInput?.expected.requestedAnswerRequired).toBe(false);}
+});
+
+it("qualifies an effect-only vault edit without fabricating a missing-answer or recipient negative",async()=>{
+ const target="Simple Card.mdx",files={[target]:"Old time."};state.path=target;state.source={...files};
+ const world={kind:"vaultWork",workspace:"spectrolite",id:"qualified-effect",requestedReturnRequired:false,goal:"Correct the time and leave the card open.",sourceGroup:"qualified-effect",openPath:target,files,writable:[target],expected:{path:target,outcome:"edited",citations:[],steps:[{kind:"read",path:target,findings:[["document","document-ready"]]},{kind:"write",path:target,source:"Corrected time."},{kind:"read",path:target,findings:[["document","document-ready"]]}]}} as const;
+ const prepared=await prepareVaultKnowledge({contextId:"context",caseId:world.id,panelId:"panel"},world as never);const proof=await prepared.qualify();
+ expect(proof.passed).toBe(true);expect(proof.checks.rejectsStale).toBe(true);expect(proof.checks.rejectsUnissuedTarget).toBe(true);expect(Object.hasOwn(proof.checks,"rejectsMissingAnswer")).toBe(false);expect(Object.hasOwn(proof.checks,"rejectsWrongRecipient")).toBe(false);
+ expect(proof.outcomeContract.effects.checks).toContain("rejectsStale");expect(proof.outcomeDimensions.effects.passed).toBe(true);
 });
