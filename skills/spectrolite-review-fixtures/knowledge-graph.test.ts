@@ -139,3 +139,17 @@ it("rejects a requested source whose only reference proof would occur after muta
   const futureAuthority = [visitor,visitorWrite,authority,visitorAfter];
   expect(verifiesKnowledgeGraph({basis:[authority.path]},futureAuthority,futureAuthority,undefined)).toBe(false);
 });
+
+
+it("accepts actual source observations without copying reference revision or preview reviews",()=>{
+  const sourceOnly=[{...staffing,findings:[["document","document-ready"]] as const},rules,before,write,{...after,findings:[["document","document-ready"]] as const}];
+  expect(verifiesKnowledgeGraph(graph,reference,sourceOnly,undefined)).toBe(true);
+  // Effect facts such as rendering are separately judged from native readback;
+  // no reference-authored finding may become a mandatory lambda call.
+  expect(verifiesKnowledgeGraph(graph,[...reference,{...after,findings:[["preview","preview-ready"]]}],sourceOnly,undefined)).toBe(true);
+});
+
+it("requires query authority source inspection without prescribing diagnostic receipt fields",()=>{
+  expect(verifiesKnowledgeGraph({basis:[staffing.path]},[staffing],[{...staffing,findings:[["document","document-ready"]]}],undefined)).toBe(true);
+  expect(verifiesKnowledgeGraph({basis:[staffing.path]},[staffing],[],undefined)).toBe(false);
+});

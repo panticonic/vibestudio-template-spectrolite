@@ -1,0 +1,24 @@
+# Native observation and vault graph inventory
+
+Baseline Spectrolite bc8223d213773345035600ebdc9c047d6533c7ae; source-only successor, no frozen source changes.
+
+- `knowledge-managed.ts` wraps actor inspect/follow/revise/evidence, records views/journal/events, invokes the graph checker, grounds typed query reads, and performs reference/negative qualification. Only actor service `inspect` is an observation: setup, core inspectLive and verifier inspectNativeState are not.
+- `knowledge-graph.ts` has one production caller above. Previously all reference findings, including post-write draft status, were mandatory and only evidence calls emitted read events. Actual source inspected by the actor was ignored.
+- `workOnVaultKnowledgeGoal.ts` inspects initially and after every follow/revise; readKnowledgeNote is optional planner-selected composition, not the sole source-reading operation.
+- `open-goal.ts` returns actual canonical source, visible renderer, resolved links and revision through inspect, independently guards current head/CAS/generation, records native writes, and provides source-content readback. Evidence additionally returns preview/committed-revision receipts. These extra facts must not be attributed to inspect.
+- `source-content-evidence.ts` independently checks recorded write hashes, allowed paths, protected source and current readback, then requires semantic content review. Mutation graph evidence is not a replacement for these checks.
+- SST open-goal-vault-{knowledge,graph,renderer}-worlds.ts compose all vaultWork worlds. Explicit graph basis names authority sources; fallback is initial reference source reads. Some mutation goals explicitly require rendered output and/or repaired-link traversal; these remain distinct from generic source-read evidence.
+- open-goal.ts exactObservedNavigation is separate from graph (which never checked follow edges). Existing 11 spectrolite goals explicitly request their link/route inspection; no blanket edge removal.
+- Queries retain their actual requested return contract and receipt-grounded review claims. An inspection provides source/document facts, not an unseen committed comparison, renderer phase or fabricated evidence IDs.
+
+Before-edit evidence: quiet-room-after-sound-check asks check staffing/sound then correct card; reference also requests post-write document/revision draft-changed, neither of which requires an extra semantic review call to establish persistence. Graph required both those findings. The actual TS coordinator already inspected the edited card.
+
+## Correction and limits
+
+Actor-visible `inspect` contributes only document/source observations, in actual call chronology. Setup and verifier-only reads never enter that journal. Authority/basis sources must be observed before each mutation; each edited source must be observed before and after its write and before handoff. Current-head/CAS, allowed paths, native recorded write hashes, protected committed state, owner co-edits and handoff receipt/preview guards remain unchanged.
+
+All vaultWork outcomes now require independent goal review. Mutation input includes actual actor journal plus original/observed/retained native documents and preview readbacks; query input includes actor views/receipts/journal/events, actual final editor and requested answer. Reference final paths, citation substrings, report enums, editor echoes and diagnostic review records no longer decide query success or failure masks. Original user goal drives explicit final-open, navigation/order, authority, rendering and literal quotation requirements in mandatory review. A nonempty answer is only crisp completeness, never semantic acceptance. Host admission must bind these exact native fields and require review for every vaultWork before this Source is activated.
+
+The 11 separate open-goal spectrolite scene goals explicitly request their reference link/route traversal; their existing crisp navigation check remains. This correction does not assert browser-native execution or reviewer/model performance. It does not reassess or rewrite historical raw captures.
+
+Validation: ledger `vibe-vault-native-observation-tests-20261125a` ran 20 existing/new source-backed tests across graph and service wrappers, 1.46s/125.8MiB under LOW1.5GiB/reserve7.5. Final rerun `vibe-vault-native-observation-tests-20261125b` also passed all20 in883ms/125.4MiB after removing incidental report failure masks and updating the planner source-read contract. Tests cover actual source inspections without copied revision/preview reviews, setup/verifier-only negative, pre-write authority/after-write chronology, handoff boundaries, protected source/current write hashes, required query answer and absence of hidden citation/final-path requirements. No model or reviewer verdict is fabricated; unsupported nonempty answers remain pending mandatory independent review.

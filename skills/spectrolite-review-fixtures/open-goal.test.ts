@@ -172,7 +172,7 @@ it("fails incomplete vault knowledge results while independently checking native
   });
   const proof = await prepared.verify({});
   expect(proof.passed).toBe(false);
-  expect(proof.checks).toMatchObject({ joinedNativeKnowledge: false, independentVaultReadback: true });
+  expect(proof.checks).toMatchObject({ requestedKnowledgeAnswer: false, independentVaultReadback: true });
 });
 
 it("accepts exploratory navigation while requiring the selected link and final native state", async () => {
@@ -248,4 +248,48 @@ it("verifies knowledge writes against retained candidate bytes rather than refer
   expect(proof.sourceContentEvidence?.retainedDocuments[target]).toBe(actual);
   state.source[protectedPath]="Unauthorized change.";
   expect((await prepared.verify(null)).outcomeDimensions.effects.passed).toBe(false);
+});
+
+
+it("counts actor inspections before and after knowledge writes without extra review calls", async()=>{
+  const target="Observed.mdx";
+  const files={[target]:"Original time: 18:00."};
+  state.path=target;state.source={...files};
+  const prepared=await prepareVaultKnowledge({contextId:"context",caseId:"source-only",panelId:"panel"},{
+    kind:"vaultWork",workspace:"spectrolite",id:"source-only",goal:"Correct the time to 18:45 and leave the note open.",sourceGroup:"source-only",openPath:target,files,writable:[target],
+    expected:{path:target,outcome:"edited",citations:["18:45"],steps:[{kind:"read",path:target,findings:[["document","document-ready"],["revision","revision-unchanged"]]},{kind:"write",path:target,source:"18:45"},{kind:"read",path:target,findings:[["document","document-ready"],["revision","draft-changed"]]}]},
+  });
+  // Setup and verifier readback do not manufacture actor observations.
+  expect((await prepared.verify(null)).checks.exactVaultRoute).toBe(false);
+  const current=await prepared.services.spectroliteGoal.inspect();
+  expect(await prepared.services.spectroliteGoal.revise(current.revision,"Corrected time: 18:45.")).toBe("written");
+  expect((await prepared.verify(null)).checks.exactVaultRoute).toBe(false);
+  await prepared.services.spectroliteGoal.inspect();
+  const proof=await prepared.verify(null);
+  expect(proof.outcomeDimensions.effects.passed).toBe(true);
+  expect(proof.semanticReviewRequired).toBe(true);
+  expect(proof.sourceContentEvidence?.journal).toEqual(expect.arrayContaining([expect.objectContaining({method:"inspect"}),expect.objectContaining({method:"revise"})]));
+  expect(proof.sourceContentEvidence?.observedDocuments.every(row=>Object.hasOwn(row,"preview"))).toBe(true);
+});
+
+it("judges requested query meaning separately from incidental reference report echoes",async()=>{
+  const target="Answer.mdx",files={[target]:"Signed closing time: 18:45."};
+  state.path=target;state.source={...files};
+  const prepared=await prepareVaultKnowledge({contextId:"context",caseId:"query-source",panelId:"panel"},{
+    kind:"vaultWork",workspace:"spectrolite",id:"query-source",goal:"What is the signed closing time?",sourceGroup:"query-source",openPath:target,files,
+    expected:{path:"Reference-only-end.mdx",outcome:"authority-confirmed",citations:["hidden exact wording"],steps:[{kind:"read",path:target,findings:[["document","document-ready"],["revision","revision-unchanged"]]}]},
+  });
+  const answer={answer:"The signed closing time is 18:45."};
+  expect((await prepared.verify(answer)).checks.exactVaultRoute).toBe(false);
+  await prepared.services.spectroliteGoal.inspect();
+  const proof=await prepared.verify(answer);
+  expect(proof.outcomeDimensions.effects.passed).toBe(true);
+  expect(proof.outcomeDimensions.returnedValue.passed).toBe(true);
+  expect(proof.semanticReviewRequired).toBe(true);
+  expect(proof.semanticReviewInput?.actual).toEqual(expect.objectContaining({requestedAnswer:answer.answer,observations:expect.objectContaining({views:[expect.objectContaining({path:target,source:files[target]})],receipts:[]})}));
+  expect(JSON.stringify(proof.semanticReviewInput)).not.toContain("hidden exact wording");
+  expect((await prepared.verify({answer:""})).outcomeDimensions.returnedValue.passed).toBe(false);
+  // A nonempty invention remains pending mandatory semantic review, never an
+  // accepted native proof: no test substitutes a fabricated reviewer verdict.
+  expect((await prepared.verify({answer:"The closing time is 23:00."})).semanticReviewRequired).toBe(true);
 });

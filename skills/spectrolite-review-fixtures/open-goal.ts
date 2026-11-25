@@ -384,16 +384,16 @@ export async function prepareOpenSpectroliteGoal(
       readFiles(stateRef(final.vault.committed)), readFiles(final.working),
       world.writablePath || writablePaths?.length ? readFiles(initial.workingHead) : undefined,
     ]);
-    const observedDocuments = [...new Map(inspections.map(({view, binding}) => {
+    const observedDocuments = [...new Map(inspections.map(({view, read, binding}) => {
       const sourceHash = sha256HexSyncText(view.source);
-      return [JSON.stringify([view.path,view.revision,sourceHash]), {path:view.path,revision:view.revision,source:view.source,sourceHash,visible:view.visible,binding}] as const;
+      return [JSON.stringify([view.path,view.revision,sourceHash]), {path:view.path,revision:view.revision,source:view.source,sourceHash,visible:view.visible,preview:read.preview,binding}] as const;
     })).values()];
     return {
       final, status, initial, committedFiles, workingFiles,
       ...(originalDocuments ? { sourceContentEvidence: {
         originalDocuments, observedDocuments, retainedDocuments:workingFiles, committedDocuments:committedFiles,
         currentDocument:{path:final.view.path,revision:final.view.revision,source:final.view.source,sourceHash:sha256HexSyncText(final.view.source),visible:final.read.text,preview:final.read.preview,binding:final.binding},
-        writes:structuredClone(writes),
+        writes:structuredClone(writes),navigationHops:structuredClone(hops),
       }} : {sourceContentEvidence:undefined}),
       hops: structuredClone(hops), writes: structuredClone(writes),
       revisionAttempts: structuredClone(revisionAttempts),
